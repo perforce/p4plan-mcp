@@ -1,0 +1,9 @@
+services:
+  p4-plan-mcp:
+    build: .
+    environment:
+      - P4PLAN_API_AUTH_TOKEN=${P4PLAN_API_AUTH_TOKEN}
+      - P4PLAN_API_URL=http://host.docker.internal:4000
+      - LOG_LEVEL=debug
+      - SEARCH_LIMIT=400
+    restart: unless-stopped
