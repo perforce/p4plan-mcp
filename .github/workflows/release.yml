@@ -20,7 +20,7 @@ jobs:
       - run: npm run build
 
       - name: Create dist archive
-        run: zip -r dist.zip dist/ skills/ LICENSE.txt README.md THIRD-PARTY-NOTICES.txt
+        run: zip -r dist.zip dist/ skills/ package.json package-lock.json LICENSE.txt README.md THIRD-PARTY-NOTICES.txt
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
