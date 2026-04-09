@@ -38,7 +38,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.27.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@nestjs/axios": "4.0.1",
     "@nestjs/common": "11.1.17",
     "@nestjs/config": "4.0.3",
