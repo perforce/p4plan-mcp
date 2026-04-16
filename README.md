@@ -750,17 +750,6 @@ npm run test:e2e
 
 </details>
 
-<details><summary><b>Publishing to npm</b></summary>
-
-The package is published automatically to npm as [`@perforce/p4plan-mcp`](https://www.npmjs.com/package/@perforce/p4plan-mcp) when a GitHub Release is created:
-
-1. Update the `version` in `package.json`
-2. Commit, push, and merge to `main`
-3. Create a new **GitHub Release** with a matching tag (e.g., `v2026.1.1`)
-4. The release workflow builds, tests, and publishes to npm automatically
-
-</details>
-
 ### Logging
 
 The server uses Winston with two transports:

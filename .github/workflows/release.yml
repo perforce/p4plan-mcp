@@ -21,7 +21,17 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - run: npm ci
+      - run: npm test
       - run: npm run build
+
+      - name: Verify NPM_TOKEN is configured
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not set. Add it in Settings → Secrets → Actions."
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create dist archive
         run: zip -r p4-plan-mcp-${{ github.event.release.tag_name }}.zip dist/ skills/ package.json package-lock.json LICENSE.txt README.md THIRD-PARTY-NOTICES.txt
