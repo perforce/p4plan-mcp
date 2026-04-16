@@ -51,12 +51,60 @@ The client spawns the MCP server as a child process. Authentication is provided 
 
 > **Tip:** Use [nvm](https://github.com/nvm-sh/nvm) to manage Node.js versions, or skip the Node.js requirement entirely by using [Docker](#docker).
 
+## Quick Start (npx)
+
+The fastest way to get started — **no installation required**. Just configure your MCP client to use `npx`:
+
+```bash
+npx -y @perforce/p4plan-mcp
+```
+
+`npx` automatically downloads and runs the latest version of the server. Your MCP client (VS Code, Claude Desktop, etc.) handles this for you — just add the config below and start chatting.
+
+**VS Code** — add to `.vscode/mcp.json`:
+
+```json
+{
+    "servers": {
+        "p4-plan": {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["-y", "@perforce/p4plan-mcp"],
+            "env": {
+                "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
+                "P4PLAN_API_URL": "http://localhost:4000"
+            }
+        }
+    }
+}
+```
+
+**Claude Desktop** — add to your config:
+
+```json
+{
+  "mcpServers": {
+    "p4-plan": {
+      "command": "npx",
+      "args": ["-y", "@perforce/p4plan-mcp"],
+      "env": {
+        "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
+        "P4PLAN_API_URL": "http://localhost:4000"
+      }
+    }
+  }
+}
+```
+
+> **Note:** The `-y` flag auto-confirms the npm install prompt so the server starts without user interaction.
+
+See [Client Configuration](#client-configuration) for more options including Docker, secure token prompts, and local builds.
 
 ## Installation
 
 <details><summary><b>Build from source</b></summary>
 
-For development or when the package is not published to npm:
+For development or when you want to run from a local clone:
 
 ```bash
 npm ci
@@ -146,14 +194,6 @@ LOG_LEVEL=debug
 # P4PLAN_ALLOW_SELF_SIGNED_CERTS=true
 ```
 
-## Running
-
-```bash
-# Run the server (stdio mode — used by MCP clients)
-npm start
-# Or using npx (if published, or linked)
-npx p4-plan-mcp
-```
 
 The server communicates via stdin/stdout. It is not meant to be run interactively — MCP clients (VS Code, Claude Desktop) spawn it as a child process automatically.
 
@@ -481,7 +521,7 @@ Create `.vscode/mcp.json` in your workspace:
         "p4-plan": {
             "type": "stdio",
             "command": "npx",
-            "args": ["-y", "p4-plan-mcp"],
+            "args": ["-y", "@perforce/p4plan-mcp"],
             "env": {
                 "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
                 "P4PLAN_API_URL": "http://localhost:4000"
@@ -537,7 +577,7 @@ For added security, you can use VS Code input prompts to avoid storing tokens in
         "p4-plan": {
             "type": "stdio",
             "command": "npx",
-            "args": ["-y", "p4-plan-mcp"],
+            "args": ["-y", "@perforce/p4plan-mcp"],
             "env": {
                 "P4PLAN_API_AUTH_TOKEN": "${input:p4-plan-jwt}",
                 "P4PLAN_API_URL": "http://localhost:4000"
@@ -559,7 +599,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "p4-plan": {
       "command": "npx",
-      "args": ["-y", "p4-plan-mcp"],
+      "args": ["-y", "@perforce/p4plan-mcp"],
       "env": {
         "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
         "P4PLAN_API_URL": "http://localhost:4000"
@@ -583,7 +623,7 @@ Create `.mcp.json` in your project root:
   "mcpServers": {
     "p4-plan": {
       "command": "npx",
-      "args": ["-y", "p4-plan-mcp"],
+      "args": ["-y", "@perforce/p4plan-mcp"],
       "env": {
         "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
         "P4PLAN_API_URL": "http://localhost:4000"
@@ -616,7 +656,7 @@ Or add it via the CLI:
 claude mcp add p4-plan \
   -e P4PLAN_API_AUTH_TOKEN=YOUR_JWT_TOKEN \
   -e P4PLAN_API_URL=http://localhost:4000 \
-  -- npx -y p4-plan-mcp
+  -- npx -y @perforce/p4plan-mcp
 ```
 
 > **Note:** The server name must come **before** the `-e` flags, otherwise the variadic `-e` parser consumes the name as an env value.
@@ -675,10 +715,10 @@ npm run build
 npm link
 
 # Now test exactly as an end user would
-P4PLAN_API_AUTH_TOKEN=your-jwt-token npx p4-plan-mcp
+P4PLAN_API_AUTH_TOKEN=your-jwt-token npx @perforce/p4plan-mcp
 
 # Clean up when done
-npm unlink -g p4-plan-mcp
+npm unlink -g @perforce/p4plan-mcp
 ```
 
 The symlink persists across rebuilds — just run `npm run build` after code changes.
@@ -712,17 +752,12 @@ npm run test:e2e
 
 <details><summary><b>Publishing to npm</b></summary>
 
-The package is configured for npm publishing with `npx` support:
+The package is published automatically to npm as [`@perforce/p4plan-mcp`](https://www.npmjs.com/package/@perforce/p4plan-mcp) when a GitHub Release is created:
 
-```bash
-# Manual publish
-npm publish
-
-# Or via GitHub Actions (auto-publishes on release tag)
-git tag v1.0.0
-git push origin v1.0.0
-# → Create a GitHub Release → workflow publishes to npm
-```
+1. Update the `version` in `package.json`
+2. Commit, push, and merge to `main`
+3. Create a new **GitHub Release** with a matching tag (e.g., `v2026.1.1`)
+4. The release workflow builds, tests, and publishes to npm automatically
 
 </details>
 
