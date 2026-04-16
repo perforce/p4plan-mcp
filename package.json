@@ -1,6 +1,6 @@
 {
-  "name": "p4-plan-mcp",
-  "version": "2026.1.0",
+  "name": "@perforce/p4plan-mcp",
+  "version": "2026.1.1",
   "description": "P4 Plan MCP (Model Context Protocol) Server",
   "author": "Perforce Software, Inc.",
   "license": "MIT",
@@ -20,6 +20,9 @@
   "engines": {
     "node": ">=18",
     "npm": ">=10"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "prebuild": "rimraf dist",
