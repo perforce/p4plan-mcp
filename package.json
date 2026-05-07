@@ -1,5 +1,6 @@
 {
   "name": "@perforce/p4plan-mcp",
+  "mcpName": "io.github.perforce/p4plan-mcp",
   "version": "2026.1.1",
   "description": "P4 Plan MCP (Model Context Protocol) Server",
   "author": "Perforce Software, Inc.",

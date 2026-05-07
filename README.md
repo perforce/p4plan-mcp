@@ -100,6 +100,16 @@ npx -y @perforce/p4plan-mcp
 
 See [Client Configuration](#client-configuration) for more options including Docker, secure token prompts, and local builds.
 
+## MCP Registry
+
+This server is published to the official [MCP Registry](https://registry.modelcontextprotocol.io) as **`io.github.perforce/p4plan-mcp`**. Discover it via the registry API:
+
+```bash
+curl 'https://registry.modelcontextprotocol.io/v0/servers?search=io.github.perforce/p4plan-mcp'
+```
+
+MCP clients that support registry discovery can install the server by name without needing to know the npm package identifier.
+
 ## Installation
 
 <details><summary><b>Build from source</b></summary>
@@ -120,11 +130,7 @@ npm link
 
 Run the MCP server via Docker instead of installing Node.js locally. The MCP client (VS Code, Claude Desktop) spawns the container as a child process — same as `npx`, just using `docker` as the command.
 
-**Build the image:**
-
-```bash
-docker build -t p4-plan-mcp .
-```
+The image is published to Docker Hub at [`perforce/p4plan-mcp`](https://hub.docker.com/r/perforce/p4plan-mcp), built multi-arch (`linux/amd64` + `linux/arm64`) on every release, with SLSA provenance and SBOM attestations.
 
 **VS Code** (`.vscode/mcp.json`):
 
@@ -138,7 +144,7 @@ docker build -t p4-plan-mcp .
                 "run", "-i", "--rm",
                 "-e", "P4PLAN_API_AUTH_TOKEN=YOUR_JWT_TOKEN",
                 "-e", "P4PLAN_API_URL=http://host.docker.internal:4000",
-                "p4-plan-mcp"
+                "perforce/p4plan-mcp:latest"
             ]
         }
     }
@@ -156,7 +162,7 @@ docker build -t p4-plan-mcp .
         "run", "-i", "--rm",
         "-e", "P4PLAN_API_AUTH_TOKEN=YOUR_JWT_TOKEN",
         "-e", "P4PLAN_API_URL=http://host.docker.internal:4000",
-        "p4-plan-mcp"
+        "perforce/p4plan-mcp:latest"
       ]
     }
   }
@@ -164,6 +170,15 @@ docker build -t p4-plan-mcp .
 ```
 
 > **Note:** Use `host.docker.internal` (macOS/Windows) or `172.17.0.1` (Linux) to reach the P4 Plan GraphQL API running on the host machine.
+
+> **Pin a specific version** by replacing `:latest` with `:2026.2.0` (or whichever tag) for reproducible deployments.
+
+**Build locally** (for development against unreleased changes):
+
+```bash
+docker build -t p4plan-mcp:dev .
+# then swap "perforce/p4plan-mcp:latest" for "p4plan-mcp:dev" in the configs above
+```
 
 </details>
 
