@@ -11,7 +11,7 @@ export const SERVER_INSTRUCTIONS = `You are connected to a P4 Plan project manag
 
 IMPORTANT: before calling search_tasks, you MUST call the read_skill tool with skillName="search-queries" to get the correct Find query syntax.
 
-IMPORTANT: comment text and multiline field values are sanitized HTML, not plain text. Before calling post_comment, update_comment, set_custom_field (for Multiline Text columns), or create_item / update_item with detailedDescription or stepsToReproduce, you MUST call the read_skill tool with skillName="comment-html-format". If the comment includes an @user mention, also call read_skill with skillName="mentions".
+IMPORTANT: comment text and multiline field values are sanitized HTML. Plain text (no tags) is accepted as a special case — it is valid HTML and the server stores it as-is. Anything with formatting, lists, links, code blocks, or @mentions must use the allowed HTML subset. Before calling post_comment, update_comment, set_custom_field (for Multiline Text columns), or create_item / update_item with detailedDescription or stepsToReproduce, you MUST call the read_skill tool with skillName="comment-html-format". If the comment includes an @user mention, also call read_skill with skillName="mentions".
 
 Quick reference for common mistakes (call read_skill for complete syntax):
   WRONG itemType="Bug"                   -> CORRECT Itemtype="Bug"

@@ -5,7 +5,9 @@ description: Author HTML-formatted comments and multiline field values that rend
 
 # Comment & Multiline HTML Format
 
-P4 Plan stores comments and multiline field values as **sanitized HTML**. Both the Qt desktop client and the React web client render this HTML — anything outside the allow-list below is silently stripped server-side.
+P4 Plan treats comment text and multiline field values as **sanitized HTML**. The server runs every payload through a whitelist sanitizer — anything outside the allow-list below is silently stripped. Both the Qt desktop client and the React web client render the stored result.
+
+Plain text without any tags is a legal special case: it is valid HTML, so the sanitizer accepts it and the server stores it as-is. Anything with formatting, lists, links, code blocks, or @mentions must use the documented HTML subset below.
 
 This skill covers the format. For @user references inside this HTML, see the [mentions skill](../mentions/SKILL.md).
 
@@ -13,15 +15,17 @@ This skill covers the format. For @user references inside this HTML, see the [me
 
 Read this skill before calling any of:
 
-- `post_comment` — `text` is HTML
-- `update_comment` — `text` is HTML
-- `set_custom_field` — `value` is HTML when the column type is **Multiline Text**
-- `create_item` / `update_item` — `detailedDescription` and `stepsToReproduce` are HTML (Bug only)
+- `post_comment` — `text` is sanitized HTML
+- `update_comment` — `text` is sanitized HTML
+- `set_custom_field` — `value` is sanitized HTML when the column type is **Multiline Text**
+- `create_item` / `update_item` — `detailedDescription` and `stepsToReproduce` are sanitized HTML (Bug only)
 
 ## Wire format
 
-- **Plain prose with line breaks**: send the raw text. Newlines (`\n`) are preserved. The server stores it as plain text. No envelope needed.
-- **Anything formatted** (bold, lists, links, mentions, code, tables): wrap in `<html><body>...</body></html>`. The server sanitizes and may strip the envelope on storage if no formatting survives.
+The wire format is always sanitized HTML. Two practical shapes:
+
+- **Plain prose with line breaks** (no tags needed): send raw text such as `Hello\nworld`. Plain text is valid HTML; the sanitizer accepts it unchanged, and the server stores it as-is.
+- **Anything formatted** (bold, lists, links, mentions, code blocks, tables): wrap in `<html><body>...</body></html>` and use the allowed tags below. The server sanitizes and minimizes — if the wrapped content reduces to plain text after sanitization (for example only `<p>` and `<br>` with no formatting), the envelope is stripped on storage.
 
 ## Allowed tags
 

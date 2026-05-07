@@ -19,7 +19,7 @@ export class UsersTools {
       definition: {
         name: 'get_current_user',
         description:
-          'Get information about the currently authenticated user, including their name, email, and userLink (paste verbatim as the href when constructing @mentions — see the mentions skill).',
+          'Get information about the currently authenticated user, including their name, emailAddress, and userLink (paste verbatim as the href when constructing @mentions — see the mentions skill).',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -60,7 +60,7 @@ export class UsersTools {
         id: string;
         name: string;
         userLink: string;
-        email?: string;
+        emailAddress?: string;
       };
     }>(GET_CURRENT_USER_QUERY, {}, authToken);
 
@@ -90,7 +90,7 @@ export class UsersTools {
             id: string;
             name: string;
             userLink: string;
-            email?: string;
+            emailAddress?: string;
           };
           accessRights: {
             isMainManager: boolean;

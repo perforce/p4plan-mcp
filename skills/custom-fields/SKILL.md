@@ -28,7 +28,7 @@ Custom fields (custom columns) add project-specific data to tasks beyond the bui
 | Column Type            | Value Format                                     |
 |------------------------|--------------------------------------------------|
 | Text                   | Any string                                       |
-| Multiline Text         | Sanitized HTML — see comment-html-format skill   |
+| Multiline Text         | Sanitized HTML; plain text accepted (no tags = valid HTML). Use HTML for formatting or @mentions — see comment-html-format skill |
 | Number                 | Integer string, e.g. "5"                         |
 | Decimal Number         | Numeric string, e.g. "5.5"                       |
 | Date                   | ISO date "YYYY-MM-DD"                            |
