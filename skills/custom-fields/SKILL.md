@@ -28,7 +28,7 @@ Custom fields (custom columns) add project-specific data to tasks beyond the bui
 | Column Type            | Value Format                                     |
 |------------------------|--------------------------------------------------|
 | Text                   | Any string                                       |
-| Multiline Text         | Any string (supports newlines)                   |
+| Multiline Text         | Sanitized HTML — see comment-html-format skill   |
 | Number                 | Integer string, e.g. "5"                         |
 | Decimal Number         | Numeric string, e.g. "5.5"                       |
 | Date                   | ISO date "YYYY-MM-DD"                            |
@@ -47,3 +47,5 @@ To clear a field, pass an empty string as the value.
 - [Task Management](../task-management/SKILL.md) -- built-in task fields
 - [Backlog Grooming](../backlog-refinement/SKILL.md) -- backlog item fields
 - [Workflows](../workflows/SKILL.md) -- workflow status fields (same tool module)
+- [Comment HTML Format](../comment-html-format/SKILL.md) -- HTML format for Multiline Text values
+- [Mentions](../mentions/SKILL.md) -- @user references inside Multiline Text values
