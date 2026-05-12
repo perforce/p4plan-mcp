@@ -65,6 +65,7 @@ describe('UsersTools', () => {
           id: 'u-1',
           name: 'Alice',
           emailAddress: 'alice@example.com',
+          userLink: 'hansoft://server;db;guid/UserID/1',
         },
       });
 
@@ -74,6 +75,7 @@ describe('UsersTools', () => {
       expect(data.id).toBe('u-1');
       expect(data.name).toBe('Alice');
       expect(data.emailAddress).toBe('alice@example.com');
+      expect(data.userLink).toBe('hansoft://server;db;guid/UserID/1');
       const [, variables, token] = getQueryCall(mockGraphqlClient.query, 0);
       expect(variables).toEqual({});
       expect(token).toBe('test-token');
@@ -81,7 +83,11 @@ describe('UsersTools', () => {
 
     it('should handle user without email', async () => {
       mockGraphqlClient.query.mockResolvedValue({
-        authenticatedUser: { id: 'u-2', name: 'Bob' },
+        authenticatedUser: {
+          id: 'u-2',
+          name: 'Bob',
+          userLink: 'hansoft://server;db;guid/UserID/2',
+        },
       });
 
       const result = await callTool('get_current_user', {});
@@ -90,17 +96,28 @@ describe('UsersTools', () => {
       expect(data.id).toBe('u-2');
       expect(data.name).toBe('Bob');
       expect(data.emailAddress).toBeUndefined();
+      expect(data.userLink).toBe('hansoft://server;db;guid/UserID/2');
     });
   });
 
   describe('list_project_users', () => {
     const mockUsers = [
       {
-        user: { id: 'u-1', name: 'Alice', emailAddress: 'alice@example.com' },
+        user: {
+          id: 'u-1',
+          name: 'Alice',
+          emailAddress: 'alice@example.com',
+          userLink: 'hansoft://server;db;guid/UserID/1',
+        },
         accessRights: { isMainManager: true, limitedVisibility: false },
       },
       {
-        user: { id: 'u-2', name: 'Bob', emailAddress: 'bob@example.com' },
+        user: {
+          id: 'u-2',
+          name: 'Bob',
+          emailAddress: 'bob@example.com',
+          userLink: 'hansoft://server;db;guid/UserID/2',
+        },
         accessRights: { isMainManager: false, limitedVisibility: false },
       },
     ];
@@ -111,15 +128,19 @@ describe('UsersTools', () => {
       });
 
       const result = await callTool('list_project_users', { projectId: 'p-1' });
-      const data =
-        parseToolResult<
-          { user: { name: string }; accessRights: { isMainManager: boolean } }[]
-        >(result);
+      const data = parseToolResult<
+        {
+          user: { name: string; userLink: string };
+          accessRights: { isMainManager: boolean };
+        }[]
+      >(result);
 
       expect(data).toHaveLength(2);
       expect(data[0].user.name).toBe('Alice');
+      expect(data[0].user.userLink).toBe('hansoft://server;db;guid/UserID/1');
       expect(data[0].accessRights.isMainManager).toBe(true);
       expect(data[1].user.name).toBe('Bob');
+      expect(data[1].user.userLink).toBe('hansoft://server;db;guid/UserID/2');
       const [, variables, token] = getQueryCall(mockGraphqlClient.query, 0);
       expect(variables).toEqual({ id: 'p-1' });
       expect(token).toBe('test-token');

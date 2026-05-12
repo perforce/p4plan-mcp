@@ -10,6 +10,7 @@ export const GET_CURRENT_USER_QUERY = /* GraphQL */ `
     authenticatedUser {
       id
       name
+      userLink
       ... on NormalUser {
         emailAddress
       }
@@ -26,6 +27,7 @@ export const GET_PROJECT_USERS_QUERY = /* GraphQL */ `
         user {
           id
           name
+          userLink
           ... on NormalUser {
             emailAddress
           }

@@ -17,6 +17,7 @@ The **To Do List** (get_my_tasks) shows all tasks, items, and bugs assigned to t
 - **Multi-assignment**: Multiple users can be assigned to one task. update_item assignedTo replaces existing assignees — include existing ones to add. Each entry supports optional percentageAllocation (default: 100).
 - **Sprint constraint**: When assigning a task in a sprint, the assignee must already be a sprint member.
 - **Links**: Items can link to other items (blocks, duplicates, related) or to external URLs. Use get_tasks to see existing links.
+- **Comments are HTML**: `post_comment` and `update_comment` accept sanitized HTML — see the [comment-html-format](../comment-html-format/SKILL.md) skill for the allowed tag/CSS subset, and the [mentions](../mentions/SKILL.md) skill for `@user` references.
 
 ## Tool Mapping
 
@@ -63,3 +64,5 @@ Items with a `committedToProjectID` are already committed to a sprint. Before mo
 - [Bug Tracking](../bug-tracking/SKILL.md) -- bug-specific fields and workflows
 - [Planning](../planning/SKILL.md) -- sprints and releases
 - [Workflows](../workflows/SKILL.md) -- custom workflow statuses
+- [Comment HTML Format](../comment-html-format/SKILL.md) -- HTML format for comments and multiline fields
+- [Mentions](../mentions/SKILL.md) -- @user references inside comments

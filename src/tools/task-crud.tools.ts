@@ -144,11 +144,13 @@ export class TaskCrudTools extends TaskToolsBase {
             },
             detailedDescription: {
               type: 'string',
-              description: 'Detailed description (bug only)',
+              description:
+                'Detailed description in sanitized HTML format (bug only). See the comment-html-format skill for the allowed tag/CSS subset, and the mentions skill if including @user references.',
             },
             stepsToReproduce: {
               type: 'string',
-              description: 'Steps to reproduce (bug only)',
+              description:
+                'Steps to reproduce in sanitized HTML format (bug only). See the comment-html-format skill for the allowed tag/CSS subset, and the mentions skill if including @user references.',
             },
             estimatedDays: {
               type: 'number',
@@ -394,11 +396,13 @@ export class TaskCrudTools extends TaskToolsBase {
             },
             detailedDescription: {
               type: 'string',
-              description: 'Detailed description (Bug only)',
+              description:
+                'Detailed description in sanitized HTML format (Bug only). See the comment-html-format skill for the allowed tag/CSS subset, and the mentions skill if including @user references.',
             },
             stepsToReproduce: {
               type: 'string',
-              description: 'Steps to reproduce (Bug only)',
+              description:
+                'Steps to reproduce in sanitized HTML format (Bug only). See the comment-html-format skill for the allowed tag/CSS subset, and the mentions skill if including @user references.',
             },
 
             // -- ScheduledTask only --
