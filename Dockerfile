@@ -1,6 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
-# ---- builder: install all deps, compile TypeScript ----
 FROM node:24-alpine AS builder
 WORKDIR /app
 
@@ -12,7 +9,6 @@ COPY scripts/ scripts/
 COPY src/ src/
 RUN npm run build
 
-# ---- runtime: prod deps + built output + skills only ----
 FROM node:24-alpine AS runtime
 WORKDIR /app
 
@@ -22,8 +18,6 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY skills/ ./skills/
 
-# logger writes to /app/.logs at startup (see src/factories/logger.factory.ts);
-# pre-create it with node ownership so the unprivileged USER can write
 RUN mkdir -p /app/.logs && chown -R node:node /app/.logs
 
 LABEL org.opencontainers.image.title="P4 Plan MCP Server" \
