@@ -5,7 +5,7 @@ on:
     types: [published]
 
 jobs:
-  build-and-upload:
+  publish-npm:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -46,27 +46,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Sync server.json version with package.json
-        run: |
-          PKG_VERSION=$(jq -r .version package.json)
-          jq --arg v "$PKG_VERSION" '.version = $v | .packages[0].version = $v' \
-            server.json > server.json.tmp && mv server.json.tmp server.json
-
-      - name: Install mcp-publisher
-        run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
-            | tar xz mcp-publisher
-          chmod +x ./mcp-publisher
-
-      - name: Authenticate to MCP registry (GitHub OIDC)
-        run: ./mcp-publisher login github-oidc
-
-      - name: Publish to MCP registry
-        run: ./mcp-publisher publish
-
   publish-docker:
     runs-on: ubuntu-latest
-    needs: build-and-upload
     permissions:
       contents: read
       id-token: write
@@ -128,3 +109,35 @@ jobs:
           repository: perforce/p4plan-mcp
           short-description: ${{ steps.pkg.outputs.description }}
           readme-filepath: ./README.md
+
+  publish-mcp-registry:
+    runs-on: ubuntu-latest
+    needs: [publish-npm, publish-docker]
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Sync server.json version with package.json
+        run: |
+          PKG_VERSION=$(jq -r .version package.json)
+          jq --arg v "$PKG_VERSION" '
+            .version = $v
+            | .packages[0].version = $v
+            | .packages[1].version = $v
+            | .packages[1].identifier = ("docker.io/perforce/p4plan-mcp:" + $v)
+          ' server.json > server.json.tmp && mv server.json.tmp server.json
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          chmod +x ./mcp-publisher
+
+      - name: Authenticate to MCP registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP registry
+        run: ./mcp-publisher publish

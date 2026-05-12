@@ -26,7 +26,8 @@ LABEL org.opencontainers.image.title="P4 Plan MCP Server" \
       org.opencontainers.image.url="https://github.com/perforce/p4plan-mcp" \
       org.opencontainers.image.documentation="https://github.com/perforce/p4plan-mcp#readme" \
       org.opencontainers.image.vendor="Perforce Software, Inc." \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT" \
+      io.modelcontextprotocol.server.name="io.github.perforce/p4plan-mcp"
 
 ENV NODE_ENV=production \
     LOG_LEVEL=info
