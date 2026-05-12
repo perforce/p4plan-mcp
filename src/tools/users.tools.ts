@@ -19,7 +19,7 @@ export class UsersTools {
       definition: {
         name: 'get_current_user',
         description:
-          'Get information about the currently authenticated user, including their name and email.',
+          'Get information about the currently authenticated user, including their name, emailAddress, and userLink (paste verbatim as the href when constructing @mentions — see the mentions skill).',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -33,7 +33,7 @@ export class UsersTools {
       definition: {
         name: 'list_project_users',
         description:
-          'List all members of a project. Returns user IDs and names. Use the IDs with update_item (assignedTo) to assign work.',
+          'List all members of a project. Returns user IDs, names, and userLinks. Use the IDs with update_item (assignedTo) to assign work, and userLink as the href when constructing @mentions in comments — see the mentions skill.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -59,7 +59,8 @@ export class UsersTools {
       authenticatedUser: {
         id: string;
         name: string;
-        email?: string;
+        userLink: string;
+        emailAddress?: string;
       };
     }>(GET_CURRENT_USER_QUERY, {}, authToken);
 
@@ -88,7 +89,8 @@ export class UsersTools {
           user: {
             id: string;
             name: string;
-            email?: string;
+            userLink: string;
+            emailAddress?: string;
           };
           accessRights: {
             isMainManager: boolean;

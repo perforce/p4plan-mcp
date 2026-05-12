@@ -93,7 +93,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
       definition: {
         name: 'set_custom_field',
         description:
-          'Set a custom field value on a task. Get column IDs from get_custom_columns first. For drop lists, pass the option ID (not the display label). Pass empty string to clear a value.',
+          'Set a custom field value on a task. Get column IDs from get_custom_columns first. For drop lists, pass the option ID (not the display label). Pass empty string to clear a value. For Multiline Text columns, the value is sanitized HTML — call read_skill with skillName="comment-html-format" before composing it.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -109,7 +109,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
             value: {
               type: 'string',
               description:
-                'The value to set. For numbers use numeric string, for dates use ISO format (YYYY-MM-DD), for drop lists use the option ID, for user fields use comma-separated user IDs',
+                'The value to set. For numbers use numeric string, for dates use ISO format (YYYY-MM-DD), for drop lists use the option ID, for user fields use comma-separated user IDs. For Multiline Text columns, use sanitized HTML — see the comment-html-format skill.',
             },
           },
           required: ['taskId', 'customFieldId', 'value'],

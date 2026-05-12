@@ -66,7 +66,7 @@ export class TaskCommentsTools extends TaskToolsBase {
       definition: {
         name: 'post_comment',
         description:
-          'Post a comment on a task or item. Use for posting questions, acceptance criteria, blockers, or general discussion.',
+          'Post a comment on a task or item. Use for posting questions, acceptance criteria, blockers, or general discussion. Comment text is sanitized HTML — call read_skill with skillName="comment-html-format" before composing the text, and skillName="mentions" if the comment includes @user references.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -76,7 +76,8 @@ export class TaskCommentsTools extends TaskToolsBase {
             },
             text: {
               type: 'string',
-              description: 'The comment text',
+              description:
+                'Comment text in sanitized HTML format. See the comment-html-format skill for the allowed tag/CSS subset and the mentions skill for @user references.',
             },
           },
           required: ['taskId', 'text'],
@@ -190,7 +191,7 @@ export class TaskCommentsTools extends TaskToolsBase {
       definition: {
         name: 'update_comment',
         description:
-          'Edit the text of an existing comment. Get comment IDs from get_comments first.',
+          'Edit the text of an existing comment. Get comment IDs from get_comments first. Comment text is sanitized HTML — call read_skill with skillName="comment-html-format" before composing the text, and skillName="mentions" if the comment includes @user references.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -205,7 +206,8 @@ export class TaskCommentsTools extends TaskToolsBase {
             },
             text: {
               type: 'string',
-              description: 'The new comment text',
+              description:
+                'New comment text in sanitized HTML format. See the comment-html-format skill for the allowed tag/CSS subset and the mentions skill for @user references.',
             },
           },
           required: ['taskId', 'commentId', 'text'],
