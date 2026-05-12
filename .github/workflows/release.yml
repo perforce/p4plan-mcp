@@ -49,8 +49,12 @@ jobs:
       - name: Sync server.json version with package.json
         run: |
           PKG_VERSION=$(jq -r .version package.json)
-          jq --arg v "$PKG_VERSION" '.version = $v | .packages[0].version = $v' \
-            server.json > server.json.tmp && mv server.json.tmp server.json
+          jq --arg v "$PKG_VERSION" '
+            .version = $v
+            | .packages[0].version = $v
+            | .packages[1].version = $v
+            | .packages[1].identifier = ("docker.io/perforce/p4plan-mcp:" + $v)
+          ' server.json > server.json.tmp && mv server.json.tmp server.json
 
       - name: Install mcp-publisher
         run: |
