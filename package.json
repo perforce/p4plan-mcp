@@ -59,7 +59,7 @@
     "@eslint/eslintrc": "3.3.5",
     "@eslint/js": "10.0.1",
     "@nestjs/cli": "11.0.19",
-    "@nestjs/schematics": "11.0.10",
+    "@nestjs/schematics": "11.1.0",
     "@nestjs/testing": "11.1.15",
     "@types/jest": "30.0.0",
     "@types/node": "25.3.3",
