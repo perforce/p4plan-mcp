@@ -811,6 +811,13 @@ export class TaskCrudTools extends TaskToolsBase {
     validateRequired(args, ['projectId'], 'create_item(release)');
     const projectId = args.projectId as string;
 
+    if (args.parentItemId) {
+      throw new Error(
+        'create_item(release): releases cannot be nested under a parent — they are always top-level planning items. ' +
+          'Omit parentItemId; use previousItemId to position the release among its siblings.',
+      );
+    }
+
     const releaseInput: Record<string, unknown> = { name: args.name as string };
     if (args.date) releaseInput.date = args.date;
 
@@ -819,7 +826,6 @@ export class TaskCrudTools extends TaskToolsBase {
       createReleaseInput: releaseInput,
     };
     if (args.previousItemId) vars.previousItemID = args.previousItemId;
-    // parentItemId doesn't apply to releases (they're always top-level planning items)
 
     const result = await this.graphqlClient.query<{
       createRelease: {

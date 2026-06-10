@@ -642,6 +642,19 @@ describe('TaskCrudTools', () => {
           callTool('create_item', { type: 'release', name: 'v1' }),
         ).rejects.toThrow("create_item(release): 'projectId' is required");
       });
+
+      it('should throw when parentItemId is provided rather than silently dropping it', async () => {
+        await expect(
+          callTool('create_item', {
+            type: 'release',
+            projectId: 'p-1',
+            name: 'v2.4',
+            parentItemId: 'parent-1',
+          }),
+        ).rejects.toThrow('releases cannot be nested under a parent');
+
+        expect(mockGraphqlClient.query).not.toHaveBeenCalled();
+      });
     });
 
     describe('type=sprint_task', () => {
