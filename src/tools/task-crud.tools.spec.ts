@@ -643,17 +643,42 @@ describe('TaskCrudTools', () => {
         ).rejects.toThrow("create_item(release): 'projectId' is required");
       });
 
-      it('should throw when parentItemId is provided rather than silently dropping it', async () => {
-        await expect(
-          callTool('create_item', {
-            type: 'release',
-            projectId: 'p-1',
-            name: 'v2.4',
-            parentItemId: 'parent-1',
-          }),
-        ).rejects.toThrow('releases cannot be nested under a parent');
+      it('should nest the release under parentItemId via previousItemID and indentation', async () => {
+        mockGraphqlClient.query.mockResolvedValue({
+          createRelease: { id: 'r-3', name: 'v4.0' },
+        });
 
-        expect(mockGraphqlClient.query).not.toHaveBeenCalled();
+        await callTool('create_item', {
+          type: 'release',
+          projectId: 'p-1',
+          name: 'v4.0',
+          parentItemId: 'parent-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 0);
+        expect(vars).toMatchObject({
+          previousItemID: 'parent-1',
+          createReleaseInput: { name: 'v4.0', indentationLevel: 1 },
+        });
+      });
+
+      it('should position the release after previousItemId without indenting', async () => {
+        mockGraphqlClient.query.mockResolvedValue({
+          createRelease: { id: 'r-4', name: 'v5.0' },
+        });
+
+        await callTool('create_item', {
+          type: 'release',
+          projectId: 'p-1',
+          name: 'v5.0',
+          previousItemId: 'sibling-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 0);
+        expect(vars).toMatchObject({ previousItemID: 'sibling-1' });
+        expect(
+          (vars.createReleaseInput as Record<string, unknown>).indentationLevel,
+        ).toBeUndefined();
       });
     });
 
