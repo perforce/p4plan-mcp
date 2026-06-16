@@ -176,7 +176,7 @@ export class TaskCrudTools extends TaskToolsBase {
             parentItemId: {
               type: 'string',
               description:
-                'ID of the parent item — the new item will be created as a child of this item. Convenience shortcut: sets previousItemId to this value and indentation to child level. Not supported for bug type. (backlog_task, scheduled_task, sprint_task)',
+                'ID of the parent item — the new item will be created as a child of this item. Convenience shortcut: sets previousItemId to this value and indentation to child level. Not supported for bug type. (backlog_task, scheduled_task, sprint_task, sprint, release)',
             },
           },
           required: ['type', 'name'],
@@ -818,8 +818,12 @@ export class TaskCrudTools extends TaskToolsBase {
       projectID: projectId,
       createReleaseInput: releaseInput,
     };
-    if (args.previousItemId) vars.previousItemID = args.previousItemId;
-    // parentItemId doesn't apply to releases (they're always top-level planning items)
+    if (args.parentItemId) {
+      vars.previousItemID = args.parentItemId;
+      releaseInput.indentationLevel = 1;
+    } else if (args.previousItemId) {
+      vars.previousItemID = args.previousItemId;
+    }
 
     const result = await this.graphqlClient.query<{
       createRelease: {
