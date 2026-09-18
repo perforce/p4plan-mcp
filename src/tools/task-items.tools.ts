@@ -74,6 +74,7 @@ export class TaskItemsTools extends TaskToolsBase {
     const result = await this.graphqlClient.query<{
       todoList: Array<{
         id: string;
+        localID: string;
         name: string;
         projectID: string;
         status?: string;
@@ -95,6 +96,7 @@ export class TaskItemsTools extends TaskToolsBase {
 
     const tasks = result.todoList.map((item) => ({
       id: item.id,
+      localID: item.localID,
       name: item.name,
       projectID: item.projectID,
       status: item.status,

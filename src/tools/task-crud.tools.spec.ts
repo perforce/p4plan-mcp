@@ -682,6 +682,105 @@ describe('TaskCrudTools', () => {
       });
     });
 
+    // indentationLevel is relative to previousItemID, not an absolute tree
+    // depth. Per the schema contract (tasks.graphql, CreateBacklogTaskInput):
+    // "A level of 0 sets the level to same as the previous item, a level of 1
+    // sets it as a child of the previous item." So a hardcoded 1 against a
+    // parent at any depth is what makes the new item that parent's child --
+    // deriving a level from the parent's own depth would double-count.
+    describe('parentItemId nesting', () => {
+      it('nests a backlog task under its parent', async () => {
+        mockGraphqlClient.query
+          .mockResolvedValueOnce({
+            project: { id: 'proj-1', name: 'P', backlog: { id: 'bl-1' } },
+          })
+          .mockResolvedValueOnce({
+            createBacklogTasks: [
+              { id: 'new-1', name: 'Child', status: 'notDone' },
+            ],
+          });
+
+        await callTool('create_item', {
+          type: 'backlog_task',
+          projectId: 'proj-1',
+          name: 'Child',
+          parentItemId: 'parent-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 1);
+        expect(vars).toMatchObject({
+          previousItemID: 'parent-1',
+          createBacklogTasksInput: [{ name: 'Child', indentationLevel: 1 }],
+        });
+      });
+
+      it('nests a scheduled task under its parent', async () => {
+        mockGraphqlClient.query.mockResolvedValue({
+          createScheduledTasks: [
+            { id: 'sc-1', name: 'Child', status: 'notDone' },
+          ],
+        });
+
+        await callTool('create_item', {
+          type: 'scheduled_task',
+          projectId: 'proj-1',
+          name: 'Child',
+          parentItemId: 'parent-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 0);
+        expect(vars).toMatchObject({
+          previousItemID: 'parent-1',
+          createScheduledTasksInput: [{ name: 'Child', indentationLevel: 1 }],
+        });
+      });
+
+      it('nests a sprint task under its parent', async () => {
+        mockGraphqlClient.query.mockResolvedValue({
+          createSprintTasks: [{ id: 'st-9', name: 'Child', status: 'notDone' }],
+        });
+
+        await callTool('create_item', {
+          type: 'sprint_task',
+          sprintId: 's-1',
+          name: 'Child',
+          parentItemId: 'parent-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 0);
+        expect(vars).toMatchObject({
+          previousItemID: 'parent-1',
+          createSprintTasksInput: [{ name: 'Child', indentationLevel: 1 }],
+        });
+      });
+
+      it('does not indent when only previousItemId is given', async () => {
+        mockGraphqlClient.query
+          .mockResolvedValueOnce({
+            project: { id: 'proj-1', name: 'P', backlog: { id: 'bl-1' } },
+          })
+          .mockResolvedValueOnce({
+            createBacklogTasks: [
+              { id: 'new-2', name: 'Sibling', status: 'notDone' },
+            ],
+          });
+
+        await callTool('create_item', {
+          type: 'backlog_task',
+          projectId: 'proj-1',
+          name: 'Sibling',
+          previousItemId: 'sibling-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 1);
+        expect(vars).toMatchObject({ previousItemID: 'sibling-1' });
+        expect(
+          (vars.createBacklogTasksInput as Array<Record<string, unknown>>)[0]
+            .indentationLevel,
+        ).toBeUndefined();
+      });
+    });
+
     describe('type=sprint_task', () => {
       it('should create a task directly in a sprint', async () => {
         mockGraphqlClient.query.mockResolvedValue({

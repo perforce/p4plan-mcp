@@ -80,6 +80,30 @@ describe('TaskItemsTools', () => {
       expect(data.tasks[1].name).toBe('Write tests');
     });
 
+    // get_my_tasks is the only item-returning tool that projects fields
+    // explicitly instead of passing the item through, so selecting a field in
+    // the query is not enough — it has to survive the projection too.
+    it('should return localID on each task', async () => {
+      mockGraphqlClient.query.mockResolvedValue({
+        todoList: [
+          {
+            id: 't-1',
+            localID: '9020',
+            name: 'Fix login',
+            projectID: 'p-1',
+            status: 'inProgress',
+          },
+        ],
+      });
+
+      const result = await callTool('get_my_tasks', {});
+      const data = parseToolResult<{
+        tasks: { id: string; localID: string }[];
+      }>(result);
+
+      expect(data.tasks[0]).toMatchObject({ id: 't-1', localID: '9020' });
+    });
+
     it('should pass showCompleted option to query', async () => {
       mockGraphqlClient.query.mockResolvedValue({ todoList: [] });
 

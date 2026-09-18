@@ -9,6 +9,8 @@ export const COMMIT_TO_SPRINT_MUTATION = /* GraphQL */ `
   mutation CommitToSprint($taskID: ID!, $sprintID: ID!) {
     commitToSprint(taskID: $taskID, sprintID: $sprintID) {
       id
+      projectID
+      localID
       name
     }
   }
@@ -69,6 +71,8 @@ export const UPDATE_SPRINT_MUTATION = /* GraphQL */ `
   mutation UpdateSprint($updateSprintInput: UpdateSprintInput!) {
     updateSprint(updateSprintInput: $updateSprintInput) {
       id
+      projectID
+      localID
       name
       start
       finish
@@ -89,6 +93,8 @@ export const UPDATE_RELEASE_MUTATION = /* GraphQL */ `
   mutation UpdateRelease($updateReleaseInput: UpdateReleaseInput!) {
     updateRelease(updateReleaseInput: $updateReleaseInput) {
       id
+      projectID
+      localID
       name
       date
       hidden
@@ -108,6 +114,8 @@ export const CREATE_SPRINT_MUTATION = /* GraphQL */ `
       previousItemID: $previousItemID
     ) {
       id
+      projectID
+      localID
       name
       start
       finish
@@ -128,6 +136,8 @@ export const UNCOMMIT_FROM_SPRINT_MUTATION = /* GraphQL */ `
   mutation UncommitFromSprint($taskID: ID!) {
     uncommitFromSprint(taskID: $taskID) {
       id
+      projectID
+      localID
       name
     }
   }
@@ -145,6 +155,8 @@ export const CREATE_RELEASE_MUTATION = /* GraphQL */ `
       previousItemID: $previousItemID
     ) {
       id
+      projectID
+      localID
       name
       ... on Release {
         date
