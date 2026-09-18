@@ -209,14 +209,6 @@ const assignedToFields = `assignedTo {
           }
         }`;
 
-/**
- * Fields returned by update_item, per item type.
- *
- * These are selection sets rather than whole operations: buildUpdateMutation
- * assembles the mutation around them at runtime, picking the set by task type.
- * They live here with the other GraphQL text so the query tests can assert the
- * invariant that every item-returning operation selects localID.
- */
 export const UPDATE_ITEM_RETURN_FIELDS: Record<string, string> = {
   Bug: `id
         projectID
@@ -269,7 +261,6 @@ export const UPDATE_ITEM_RETURN_FIELDS: Record<string, string> = {
         }`,
 };
 
-/** Return fields for the status-only update used by complete_task / start_task. */
 export const UPDATE_STATUS_RETURN_FIELDS = `id
         projectID
         localID
