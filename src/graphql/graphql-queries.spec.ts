@@ -35,16 +35,6 @@ function isValidGraphQL(query: string): boolean {
   return startsCorrectly && balancedBraces && balancedParens;
 }
 
-/**
- * Field names selected at a given brace depth, with anything deeper skipped.
- *
- * A plain `toContain('localID')` passes if localID appears anywhere in the
- * document -- including inside a nested selection such as `links { toItem { ...
- * } }` -- which is weaker than the invariant we mean. For a full operation,
- * depth 1 is the operation body and depth 2 is the root field's own selection
- * set, which is where an item's fields live. For a bare selection list (the
- * runtime-built update mutations) the fields are already at depth 0.
- */
 function fieldsAtDepth(text: string, target: number): string {
   let depth = 0;
   let out = '';
@@ -242,9 +232,6 @@ describe('GraphQL Queries Validation', () => {
     });
   });
 
-  // Every operation that returns an item must select localID — it is the ID
-  // users see in the P4 Plan UI, and without it agents cannot map a user's
-  // "item 9020" onto the database ID that every tool takes.
   describe('localID coverage', () => {
     const itemReturningOperations: Array<[string, string]> = [
       ['GET_TASKS_QUERY', taskCrudQueries.GET_TASKS_QUERY],
@@ -284,9 +271,6 @@ describe('GraphQL Queries Validation', () => {
       },
     );
 
-    // update_item's mutations are assembled at runtime by buildUpdateMutation
-    // from these selection sets, so they are not whole operations the loop
-    // above can validate — assert on them directly.
     it.each(Object.keys(taskCrudQueries.UPDATE_ITEM_RETURN_FIELDS))(
       'taskCrudQueries.UPDATE_ITEM_RETURN_FIELDS.%s selects localID on the item itself',
       (taskType) => {

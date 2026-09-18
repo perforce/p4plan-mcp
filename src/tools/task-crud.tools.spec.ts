@@ -682,12 +682,6 @@ describe('TaskCrudTools', () => {
       });
     });
 
-    // indentationLevel is relative to previousItemID, not an absolute tree
-    // depth. Per the schema contract (tasks.graphql, CreateBacklogTaskInput):
-    // "A level of 0 sets the level to same as the previous item, a level of 1
-    // sets it as a child of the previous item." So a hardcoded 1 against a
-    // parent at any depth is what makes the new item that parent's child --
-    // deriving a level from the parent's own depth would double-count.
     describe('parentItemId nesting', () => {
       it('nests a backlog task under its parent', async () => {
         mockGraphqlClient.query
