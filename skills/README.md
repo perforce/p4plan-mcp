@@ -16,7 +16,9 @@ skills/
 ├── custom-fields/SKILL.md        # Custom columns, project-specific metadata
 ├── gantt-scheduling/SKILL.md     # Scheduled tasks, timeline, dependencies
 ├── workflows/SKILL.md            # Status workflows, status state machines
-└── pipeline/SKILL.md             # Pipeline stages, breakdown, defects in a pipeline stage
+├── pipeline/SKILL.md             # Pipeline stages, breakdown, defects in a pipeline stage
+├── comment-html-format/SKILL.md  # HTML formatting for comments and multiline fields
+└── mentions/SKILL.md             # @user mentions in comments and multiline fields
 ```
 
 ## Skill Descriptions
