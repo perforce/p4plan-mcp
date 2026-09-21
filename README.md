@@ -194,18 +194,22 @@ Edit `.env` with your settings:
 
 ```dotenv
 # JWT token for authenticating with P4 Plan GraphQL API
+# Obtain via: login mutation on the GraphQL API
 P4PLAN_API_AUTH_TOKEN=your-jwt-token
 
-# P4 Plan GraphQL API URL
-P4PLAN_API_URL=http://localhost:4000
+# P4 Plan GraphQL API URL — base origin only. Do not include a path or a
+# trailing slash: the server appends /graphql, /healthcheck and /attachment/<id>
+# itself, so a trailing slash produces //graphql.
+P4PLAN_API_URL=https://p4plan-api.example.com
 
-# Logging level
-LOG_LEVEL=debug
+# Logging
+LOG_LEVEL=info
 
-# Search results limit (default: 400)
+# Maximum number of results returned by search_tasks (default: 400)
 # SEARCH_LIMIT=400
 
-# Allow self-signed TLS certificates (for HTTPS APIs with untrusted certs)
+# Allow self-signed TLS certificates when connecting to the P4 Plan API over HTTPS
+# Set to true if your API uses a self-signed or untrusted certificate
 # P4PLAN_ALLOW_SELF_SIGNED_CERTS=true
 ```
 
@@ -694,7 +698,7 @@ claude mcp add p4-plan \
 ### Environment Variables
 
 - `P4PLAN_API_AUTH_TOKEN` - JWT token for authenticating with the P4 Plan GraphQL API
-- `P4PLAN_API_URL` - P4 Plan GraphQL API URL (default: `http://localhost:4000`)
+- `P4PLAN_API_URL` - P4 Plan GraphQL API URL, base origin only — no path, no trailing slash (the server appends `/graphql`, `/healthcheck` and `/attachment/<id>`). Defaults to `http://localhost:4000` when unset; `config-example.env` ships an HTTPS example.
 - `P4PLAN_ALLOW_SELF_SIGNED_CERTS` - Set to `true` to accept self-signed or untrusted TLS certificates when connecting to the API over HTTPS (default: `false`)
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `debug`)
 - `SEARCH_LIMIT` - Maximum number of results returned by `search_tasks` (default: `400`)
