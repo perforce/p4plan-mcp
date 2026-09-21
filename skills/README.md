@@ -34,7 +34,9 @@ skills/
 | **custom-fields**      | custom fields, columns, metadata                                               |
 | **gantt-scheduling**   | Gantt, schedule, timeline, dependencies                                        |
 | **workflows**          | workflow, sign-off, approval, status transitions                               |
-| **pipeline**           | pipeline, pipeline task, stage, breakdown, bug in a pipeline stage             |
+| **pipeline**            | pipeline, pipeline task, stage, breakdown, bug in a pipeline stage             |
+| **comment-html-format** | comments, multiline fields, HTML formatting, allowed tags                      |
+| **mentions**            | @mentions, user references, notifications in comments                          |
 
 ## Using Skills with AI Agents
 
