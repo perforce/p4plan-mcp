@@ -52,11 +52,11 @@ Illustrative shape of a carrier and its stages:
   500120  "QA | Defects"             pipeline task   createdFromWorkflow true
 ```
 
-`linkedToPipelineTask` returns the pipeline task an item was created from, as an item with `id`
-and `name`. It is non-null whenever `createdFromWorkflow` is true. Read it when you need to know
-which pipeline task an item is associated with, and fall back to the `subprojectPath` walk below
-when it is `null` — which is what you should expect for a carrier, and what you may also get for a
-breakdown child, since the field records pipeline creation rather than tree parentage.
+`linkedToPipelineTask` returns the **carrier** — the task the pipeline is assigned to as its
+workflow — as an item with `id` and `name`. Despite the field name it does *not* name a stage.
+It is non-null whenever `createdFromWorkflow` is true, and also on items that merely sit inside a
+carrier's subtree without the pipeline having created them. A top-level carrier reports `null`,
+since no pipeline encloses it; fall back to the `subprojectPath` walk below in that case.
 
 ## Where pipeline tasks live
 
@@ -110,9 +110,10 @@ Items whose `subprojectPath` ends with the carrier's name are its stages; items 
 `"<carrier>: <stage>"` are that stage's breakdown children. Confirm a candidate is really a stage
 with `get_tasks` and `createdFromWorkflow` rather than trusting the name.
 
-Going the other way, `linkedToPipelineTask` on a task names the pipeline task it was created
-from, when there is one. Treat a `null` as "no pipeline origin recorded" and fall back to the
-`subprojectPath` walk rather than concluding the item is unrelated to the pipeline.
+Going the other way, `linkedToPipelineTask` on any item in the subtree names the carrier that
+the pipeline is assigned to — not the stage the item sits under, and not, for nested pipelines,
+the nearest carrier. To identify the stage itself, walk `subprojectPath`. Treat a `null` as "not
+inside a pipeline subtree".
 
 ## Stage workflows are inherited, not specified
 
@@ -225,7 +226,7 @@ report it instead of retrying.
 | List pipelines in a project                | `get_workflows`| `projectId` — filter to `type: "PipelineWorkflow"`                |
 | Read a pipeline's stages                   | `search_tasks` | Planning `projectId`, `Pipelineorworkflow="<name>"`, then `Subprojectpath:Text("<carrier>")` |
 | Find items carrying a pipeline             | `search_tasks` | Planning `projectId`, `Pipelineorworkflow="<name>"`               |
-| Find the pipeline task an item came from   | `get_tasks`    | `taskIds` — read `linkedToPipelineTask` (may be `null`)            |
+| Find the carrier an item belongs to        | `get_tasks`    | `taskIds` — read `linkedToPipelineTask` (the carrier, not the stage) |
 | Check an item's pipeline role              | `get_tasks`    | `taskIds` — read `createdFromWorkflow`, `canHaveWorkflowType`      |
 | Attach a pipeline to an item               | `update_item`  | `itemId`, `workflowID` (confirm first — it creates items)         |
 | Remove a pipeline                          | `update_item`  | `itemId`, `workflowID: "-1"`                                      |
