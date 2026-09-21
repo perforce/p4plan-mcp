@@ -9,6 +9,7 @@ export const GET_TODO_LIST_QUERY = /* GraphQL */ `
   query GetTodoList($showOptions: ShowOptions) {
     todoList(showOptions: $showOptions) {
       id
+      localID
       name
       projectID
       ... on Task {

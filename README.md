@@ -306,7 +306,8 @@ Copy the `access_token` value and use it in your MCP client configuration.
 <details>
   <summary><strong><code>get_tasks</code></strong> - Get detailed information for one or more items by ID (max 20)</summary>
 
-- **Parameters**: `taskIds` (array of strings, max 20)
+- **Parameters**: `taskIds` (array of strings, max 20) -- database item IDs, i.e. the `id` returned by other tools
+- Every item response includes both `id` (the database ID that all tools take) and `localID` (the number shown in the P4 Plan UI's "ID" column).
 - **Use cases**: Full item details, link inspection, batch retrieval of multiple items
 
 </details>
@@ -317,6 +318,7 @@ Copy the `access_token` value and use it in your MCP client configuration.
 - **Parameters**: `findQuery`, `projectId`
 - Uses P4 Plan Find query syntax for all searches. Call `read_skill` with `skillName="search-queries"` first to get exact column names, operators, and value formats. For simple name search use `Itemname:Text("text")`. Supports filtering by status, assignee, severity, item type, dates, boolean conditions, and combinations with AND/OR/NOT.
 - Each project has three sections (Backlog, QA, Planning) with different IDs.
+- To resolve an ID, query it directly: `ID=<n>` matches the UI "ID" column (the local ID, unique only within a section) and `Databaseid=<n>` matches the database ID.
 - **Use cases**: Item discovery, filtering, reporting
 
 </details>
@@ -518,7 +520,7 @@ Copy the `access_token` value and use it in your MCP client configuration.
 
 - **Parameters**: `skillName`
 - Returns the full Markdown content of the requested skill document. The AI agent **must** call this with `skillName="search-queries"` before composing any `findQuery` for `search_tasks`.
-- Available skills: `project-navigation`, `search-queries`, `task-management`, `planning`, `backlog-refinement`, `bug-tracking`, `custom-fields`, `gantt-scheduling`, `workflows`
+- Available skills: `project-navigation`, `search-queries`, `task-management`, `planning`, `backlog-refinement`, `bug-tracking`, `custom-fields`, `gantt-scheduling`, `workflows`, `pipeline`, `comment-html-format`, `mentions`
 - **Use cases**: Learn correct query syntax, discover tool usage patterns, understand domain concepts
 
 </details>
@@ -714,7 +716,10 @@ The server includes **skill files** — domain-specific guides that help AI agen
 | bug-tracking       | Bugs, severity, QA section                                  |
 | custom-fields      | Custom columns, project-specific metadata                   |
 | gantt-scheduling   | Scheduled tasks, timeline, dependencies                     |
-| workflows          | Workflows, pipelines, status state machines                 |
+| workflows          | Status workflows, status state machines                     |
+| pipeline           | Pipeline stages, breakdown, defects in a pipeline stage     |
+| comment-html-format | Allowed HTML subset for comments and multiline fields      |
+| mentions           | @user mention syntax in comments                            |
 
 See [`skills/README.md`](skills/README.md) for details on using skills with different AI clients.
 

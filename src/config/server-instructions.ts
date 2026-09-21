@@ -28,5 +28,5 @@ RETRY POLICY: if search_tasks returns errors or zero results 3 times consecutive
 
 Additional skills are available via the read_skill tool:
   project-navigation, task-management, planning, backlog-refinement,
-  bug-tracking, custom-fields, gantt-scheduling, workflows,
+  bug-tracking, custom-fields, gantt-scheduling, workflows, pipeline,
   comment-html-format, mentions.`;

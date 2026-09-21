@@ -682,6 +682,99 @@ describe('TaskCrudTools', () => {
       });
     });
 
+    describe('parentItemId nesting', () => {
+      it('nests a backlog task under its parent', async () => {
+        mockGraphqlClient.query
+          .mockResolvedValueOnce({
+            project: { id: 'proj-1', name: 'P', backlog: { id: 'bl-1' } },
+          })
+          .mockResolvedValueOnce({
+            createBacklogTasks: [
+              { id: 'new-1', name: 'Child', status: 'notDone' },
+            ],
+          });
+
+        await callTool('create_item', {
+          type: 'backlog_task',
+          projectId: 'proj-1',
+          name: 'Child',
+          parentItemId: 'parent-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 1);
+        expect(vars).toMatchObject({
+          previousItemID: 'parent-1',
+          createBacklogTasksInput: [{ name: 'Child', indentationLevel: 1 }],
+        });
+      });
+
+      it('nests a scheduled task under its parent', async () => {
+        mockGraphqlClient.query.mockResolvedValue({
+          createScheduledTasks: [
+            { id: 'sc-1', name: 'Child', status: 'notDone' },
+          ],
+        });
+
+        await callTool('create_item', {
+          type: 'scheduled_task',
+          projectId: 'proj-1',
+          name: 'Child',
+          parentItemId: 'parent-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 0);
+        expect(vars).toMatchObject({
+          previousItemID: 'parent-1',
+          createScheduledTasksInput: [{ name: 'Child', indentationLevel: 1 }],
+        });
+      });
+
+      it('nests a sprint task under its parent', async () => {
+        mockGraphqlClient.query.mockResolvedValue({
+          createSprintTasks: [{ id: 'st-9', name: 'Child', status: 'notDone' }],
+        });
+
+        await callTool('create_item', {
+          type: 'sprint_task',
+          sprintId: 's-1',
+          name: 'Child',
+          parentItemId: 'parent-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 0);
+        expect(vars).toMatchObject({
+          previousItemID: 'parent-1',
+          createSprintTasksInput: [{ name: 'Child', indentationLevel: 1 }],
+        });
+      });
+
+      it('does not indent when only previousItemId is given', async () => {
+        mockGraphqlClient.query
+          .mockResolvedValueOnce({
+            project: { id: 'proj-1', name: 'P', backlog: { id: 'bl-1' } },
+          })
+          .mockResolvedValueOnce({
+            createBacklogTasks: [
+              { id: 'new-2', name: 'Sibling', status: 'notDone' },
+            ],
+          });
+
+        await callTool('create_item', {
+          type: 'backlog_task',
+          projectId: 'proj-1',
+          name: 'Sibling',
+          previousItemId: 'sibling-1',
+        });
+
+        const [, vars] = getQueryCall(mockGraphqlClient.query, 1);
+        expect(vars).toMatchObject({ previousItemID: 'sibling-1' });
+        expect(
+          (vars.createBacklogTasksInput as Array<Record<string, unknown>>)[0]
+            .indentationLevel,
+        ).toBeUndefined();
+      });
+    });
+
     describe('type=sprint_task', () => {
       it('should create a task directly in a sprint', async () => {
         mockGraphqlClient.query.mockResolvedValue({
