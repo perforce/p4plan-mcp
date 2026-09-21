@@ -122,14 +122,14 @@ most common cause of a search that returns nothing.
 
 | Column       | Syntax               | What it is                                                     |
 |--------------|----------------------|----------------------------------------------------------------|
-| `ID`         | `ID=9020`            | The **local ID** -- the number shown in the P4 Plan UI's "ID" column |
-| `Databaseid` | `Databaseid=1118078` | The **database ID** -- the `id` every MCP tool accepts and returns |
+| `ID`         | `ID=4217`            | The **local ID** -- the number shown in the P4 Plan UI's "ID" column |
+| `Databaseid` | `Databaseid=500100`  | The **database ID** -- the `id` every MCP tool accepts and returns |
 
 Both are returned on every item -- as `id` (database) and `localID` (local) -- so you rarely need
 to look either up. When a user quotes a bare number, decide by **where it came from**, not by how
 long it is:
 
-- Read off the P4 Plan UI's "ID" column, or spoken as "bug 9020" / "item 42" -> **local ID**,
+- Read off the P4 Plan UI's "ID" column, or spoken as "bug 4217" / "item 42" -> **local ID**,
   use `ID=`.
 - Copied from a tool response, a P4 Plan URL, or handed over by another agent -> **database ID**,
   pass it straight to `get_tasks`.
@@ -138,11 +138,11 @@ If the origin is genuinely unclear, ask, or try `Databaseid=` and fall back to `
 guess from digit count, since the two ranges overlap.
 
 ```
-# User says "look at bug 9020" -- resolve the UI number to a real item
-ID=9020
+# User says "look at bug 4217" -- resolve the UI number to a real item
+ID=4217
 
 # Confirm which item a database ID refers to, scoped to one section
-Databaseid=1118078
+Databaseid=500100
 ```
 
 **Never binary-search for a local ID.** A single `ID=` query resolves it directly.
@@ -160,7 +160,7 @@ the user means, and say which section you searched when you report the result.
 
 | Column                 | Syntax                                 | Notes                                                |
 |------------------------|----------------------------------------|------------------------------------------------------|
-| `Pipelineorworkflow`   | `Pipelineorworkflow="!New Feature"`    | The workflow **or** pipeline set on the item, by name |
+| `Pipelineorworkflow`   | `Pipelineorworkflow="Feature Delivery"` | The workflow **or** pipeline set on the item, by name |
 
 Use the workflow/pipeline name exactly as `get_workflows` returns it. This matches both status
 workflows and pipelines — a pipeline match returns the items *carrying* the pipeline, not the
@@ -186,13 +186,13 @@ Item names in P4 Plan routinely contain double quotes. Escape them as `\"` insid
 substituting a name verbatim breaks the parse:
 
 ```
-# Item actually named:  Self-claim from group ("Assign to me")
+# Item actually named:  Checkout redesign ("Buy now" flow)
 
 # CORRECT -- embedded quotes escaped
-Subprojectpath:Text("Self-claim from group (\"Assign to me\")")
+Subprojectpath:Text("Checkout redesign (\"Buy now\" flow)")
 
 # WRONG -- fails with the misleading error 'Space is not allowed here'
-Subprojectpath:Text("Self-claim from group ("Assign to me")")
+Subprojectpath:Text("Checkout redesign ("Buy now" flow)")
 ```
 
 The error names whitespace, not quoting, so it is easy to misdiagnose. If a `Text()` search fails

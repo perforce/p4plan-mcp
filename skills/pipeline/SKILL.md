@@ -34,10 +34,8 @@ valid reports `createdFromWorkflow: false` and a non-`Both` `canHaveWorkflowType
 disagree, believe `createdFromWorkflow` for the role and `canHaveWorkflowType` for whether a
 workflow can be set.
 
-Provenance, so you know how far to trust this: the `workflow` column, and the worked example's
-ids and workflow values, are confirmed against live data. The `createdFromWorkflow` and
-`canHaveWorkflowType` values are read from the resolver contract rather than observed. If a
-response ever disagrees with this table, trust the field you actually read.
+This table is a summary, not the contract. The fields themselves are authoritative — if a
+response ever disagrees with the table, trust the field you actually read.
 
 A carrier always shows `workflowStatus: null` — a pipeline has no single active status, so a `null`
 workflow status on an item whose `workflow` exists is normal and is **not** an error or missing data.
@@ -45,13 +43,13 @@ workflow status on an item whose `workflow` exists is normal and is **not** an e
 These four fields are returned on **BacklogTask and ScheduledTask only**. `Bug`, `Sprint` and
 `Release` do not have them, because none of them can be created by a pipeline.
 
-Worked example (P4 Plan "Development" project):
+Illustrative shape of a carrier and its stages:
 
 ```
-1895417  "Self-claim from group"          carrier         workflow {433, "!New Feature"}, createdFromWorkflow false
-  1899952  "DEV | Implementation tasks"   pipeline task   createdFromWorkflow true
-    1899966  "Self-claim engine: ..."     breakdown child workflow {285, "Implementation task"}, status {2, "Done"}
-  1899954  "QA | Bugs"                    pipeline task   createdFromWorkflow true
+500100  "Checkout redesign"          carrier         workflow {70, "Feature Delivery"}, createdFromWorkflow false
+  500110  "DEV | Implementation"     pipeline task   createdFromWorkflow true
+    500111  "Payment adapter"        breakdown child workflow {71, "Implementation Task"}, status {2, "Done"}
+  500120  "QA | Defects"             pipeline task   createdFromWorkflow true
 ```
 
 `linkedToPipelineTask` returns the pipeline task an item was created from, as an item with `id`
@@ -85,7 +83,7 @@ when looking for pipeline tasks.
 `get_workflows` returns a pipeline as:
 
 ```json
-{ "id": "433", "name": "!New Feature", "type": "PipelineWorkflow", "canSetWorkflowOnItems": true }
+{ "id": "70", "name": "Feature Delivery", "type": "PipelineWorkflow", "canSetWorkflowOnItems": true }
 ```
 
 **That is everything the API exposes about a pipeline.** There are no stage IDs, no stage names, no
@@ -97,15 +95,15 @@ Do not invent stage names. To learn what a pipeline actually spawns, read it off
 already carries it:
 
 1. Find a carrier — search the **Planning** section:
-   `Pipelineorworkflow="!New Feature" AND Lastupdatedon>="2026-06-01"`
+   `Pipelineorworkflow="Feature Delivery" AND Lastupdatedon>="2026-06-01"`
 2. Pick one whose `committedToProjectID` is set (uncommitted carriers have no stages yet).
 3. List its stages — search the **Planning** section:
    `Subprojectpath:Text("<carrier name>")`
    The results come back in tree order; `subprojectPath` shows the nesting.
-   Carrier names often contain double quotes — the worked example above is
-   `Self-claim from group ("Assign to me")` — so escape them as `\"` rather than pasting the
-   name in verbatim, or search a distinctive quote-free fragment instead. An unescaped quote
-   fails with `Space is not allowed here`, which does not point at the real cause.
+   Carrier names often contain double quotes — say `Checkout redesign ("Buy now" flow)` — so
+   escape them as `\"` rather than pasting the name in verbatim, or search a distinctive
+   quote-free fragment instead. An unescaped quote fails with `Space is not allowed here`,
+   which does not point at the real cause.
 
 `subprojectPath` is the only hierarchy signal in MCP responses — there is no tree-traversal tool.
 Items whose `subprojectPath` ends with the carrier's name are its stages; items ending with
@@ -122,9 +120,9 @@ You never need a "pipeline task type ID" to create a correctly-typed sub-task. E
 configured with a status workflow for its children, and **the server applies it automatically** to
 anything created under that stage, along with that workflow's entry status.
 
-Observed in the Development project: children of `DEV | Implementation tasks` come back with
-`workflow: {285, "Implementation task"}`; children of `QA | Bugs` come back with
-`workflow: {305, "!Feature bug"}, workflowStatus: {1, "New"}`. Neither was requested by the caller.
+For example, children created under a `DEV | Implementation` stage come back carrying that
+stage's implementation workflow, and children under a `QA | Defects` stage come back carrying
+that stage's bug workflow at its entry status. Neither was requested by the caller.
 
 So the sequence for breaking a stage down is: create the child under the stage, then read it back to
 see which workflow it inherited, then use `get_workflows` on the **planning project** to find the
@@ -163,10 +161,10 @@ There are two different things called "bug", and picking the wrong one puts the 
 will look:
 
 - **A defect against a feature's pipeline stage** is an ordinary child item under the stage
-  (typically named like `QA | Bugs`), living in the **Planning** section. It inherits the stage's
+  (typically named like `QA | Defects`), living in the **Planning** section. It inherits the stage's
   bug status workflow. This is what appears in the pipeline view alongside the rest of the feature's
-  work. In the Development project these are all typed as `BacklogTask` and carry the
-  `!Feature bug` workflow, not `Bug`.
+  work. Note that these are typed as `BacklogTask` carrying a bug status workflow — they are not
+  `Bug` items.
 - **A QA-section bug** (`create_item` with `type: "bug"`) is a `Bug` item in the project's QA
   section. It is a first-class defect record with `severity`, `stepsToReproduce`, and
   `detailedDescription` — but it is **not** attached to any pipeline and will not show in the
