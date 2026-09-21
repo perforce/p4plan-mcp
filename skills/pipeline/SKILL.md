@@ -141,7 +141,7 @@ where `parentItemId` lives:
 | `backlog_task`     | **Backlog** (resolves `projectId` → backlog ID) | No — the stage is not in the Backlog section, so the parent reference cannot resolve |
 | `bug`              | **QA** (resolves `projectId` → QA ID)   | No — same reason, and QA bugs are not part of any pipeline |
 | `scheduled_task`   | Planning                                | No — a scheduled task cannot be indented under a pipeline task |
-| `sprint_task`      | Planning, inside the given `sprintId`   | Only path that targets Planning with a nestable item type |
+| `sprint_task`      | Planning, inside the given `sprintId`   | Only path that targets Planning with a nestable item type — requires `sprintId`, so it only applies when the stage is in a sprint |
 
 **Check `canBeBrokenDown` on the stage first.** `get_tasks` returns it, and `false` means the
 pipeline forbids sub-tasks under that stage — stop and tell the user rather than creating an item
@@ -177,7 +177,10 @@ will look:
 1. Identify the feature the change belongs to (the carrier). If you only have a sprint or a task,
    walk up via `subprojectPath`.
 2. List its stages (see "Discovering a pipeline's stages") and pick the QA/bug stage.
-3. `create_item` a child under that stage, then verify placement as described above.
+3. `create_item` with `type: "sprint_task"`, the `sprintId` of the sprint the stage sits in,
+   `name`, and `parentItemId` set to the stage's id — `sprint_task` is the only type that both
+   targets Planning and nests, and it rejects the call outright without `sprintId`. Then verify
+   placement as described above.
 4. Read the created item back with `get_tasks` to see the inherited workflow.
 5. `get_workflows(planning projectId)` → find that workflow → `update_item(itemId,
    workflowStatusId: ...)` to set the review-appropriate state (e.g. `New`).
@@ -228,8 +231,8 @@ report it instead of retrying.
 | Check an item's pipeline role              | `get_tasks`    | `taskIds` — read `createdFromWorkflow`, `canHaveWorkflowType`      |
 | Attach a pipeline to an item               | `update_item`  | `itemId`, `workflowID` (confirm first — it creates items)         |
 | Remove a pipeline                          | `update_item`  | `itemId`, `workflowID: "-1"`                                      |
-| Create a sub-task under a stage            | `create_item`  | check `canBeBrokenDown` first; `parentItemId` = stage ID, then verify placement |
-| Log a defect into a pipeline stage         | `create_item`  | child of the QA/bug stage, not `type: "bug"`                      |
+| Create a sub-task under a stage            | `create_item`  | `type: "sprint_task"`, `sprintId` of the stage's sprint, `name`, `parentItemId` = stage ID — check `canBeBrokenDown` first, verify placement after |
+| Log a defect into a pipeline stage         | `create_item`  | `type: "sprint_task"`, `sprintId`, `name`, `parentItemId` = the QA/bug stage — **not** `type: "bug"` |
 | Log a project-level defect                 | `create_item`  | `type: "bug"`, `projectId`, `severity`, `stepsToReproduce`        |
 | Set a stage child's status                 | `update_item`  | `itemId`, `workflowStatusId` from `get_workflows` on the planning project |
 | Relate a bug to pipeline work              | `link_items`   | `fromItemId`, `relation` (both required), plus `toItemId` or `url` |
