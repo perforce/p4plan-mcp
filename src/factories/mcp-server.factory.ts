@@ -2,13 +2,9 @@
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
 /**
- * MCP server factory.
- *
- * Builds and wires an {@link McpServer} from the application's
- * {@link ToolsService} and {@link SkillsTools}. This is the single source of
- * truth for how P4 Plan tools and skill resources are exposed over MCP — used
- * both by the production bootstrap in `main.ts` and by the integration tests,
- * so the two can never drift apart.
+ * MCP server factory. Builds an McpServer from the app's ToolsService and
+ * SkillsTools, shared by the production bootstrap (main.ts) and the
+ * integration tests so both wire the server the same way.
  */
 
 import type { LoggerService } from '@nestjs/common';
@@ -20,15 +16,12 @@ import type { SkillsTools } from '../tools/skills.tools';
 const SERVER_NAME = 'p4-plan-mcp';
 const SERVER_VERSION = '1.0.0';
 
-/**
- * Convert a JSON Schema property definition to a Zod schema.
- * The SDK's registerTool() requires Zod schemas for parameter validation.
- */
+/** Convert a JSON Schema property to a Zod schema (the SDK needs Zod to validate parameters). */
 export function jsonSchemaPropertyToZod(
-  prop: Record<string, unknown>,
+  property: Record<string, unknown>,
 ): z.ZodTypeAny {
-  const type = prop.type as string;
-  const enumValues = prop.enum as string[] | undefined;
+  const type = property.type as string;
+  const enumValues = property.enum as string[] | undefined;
 
   if (enumValues && type === 'string') {
     return z.enum(enumValues as [string, ...string[]]);
@@ -42,19 +35,19 @@ export function jsonSchemaPropertyToZod(
     case 'boolean':
       return z.boolean();
     case 'array': {
-      const items = prop.items as Record<string, unknown> | undefined;
+      const items = property.items as Record<string, unknown> | undefined;
       if (items) {
         return z.array(jsonSchemaPropertyToZod(items));
       }
       return z.array(z.unknown());
     }
     case 'object': {
-      const properties = prop.properties as
+      const properties = property.properties as
         | Record<string, Record<string, unknown>>
         | undefined;
       if (properties) {
         const shape: Record<string, z.ZodTypeAny> = {};
-        const required = (prop.required as string[]) || [];
+        const required = (property.required as string[]) || [];
         for (const [key, value] of Object.entries(properties)) {
           const fieldSchema = jsonSchemaPropertyToZod(value);
           shape[key] = required.includes(key)
@@ -70,9 +63,6 @@ export function jsonSchemaPropertyToZod(
   }
 }
 
-/**
- * Convert an McpTool's inputSchema to a Zod object schema for the SDK.
- */
 export function toolInputSchemaToZod(
   tool: McpTool,
 ): Record<string, z.ZodTypeAny> {
@@ -81,19 +71,15 @@ export function toolInputSchemaToZod(
   const required = tool.inputSchema.required || [];
 
   for (const [key, value] of Object.entries(properties)) {
-    const prop = value as Record<string, unknown>;
-    const fieldSchema = jsonSchemaPropertyToZod(prop);
+    const property = value as Record<string, unknown>;
+    const fieldSchema = jsonSchemaPropertyToZod(property);
     shape[key] = required.includes(key) ? fieldSchema : fieldSchema.optional();
   }
 
   return shape;
 }
 
-/**
- * Register every tool from {@link ToolsService} on the given MCP server.
- * Each tool's JSON Schema is converted to Zod for the SDK, and calls are
- * routed through {@link ToolsService.callTool} with the supplied auth token.
- */
+/** Register every ToolsService tool on the server, routing calls through callTool with the auth token. */
 export function registerTools(
   mcpServer: McpServer,
   toolsService: ToolsService,
@@ -139,10 +125,7 @@ export function registerTools(
   return tools.length;
 }
 
-/**
- * Register every skill document from {@link SkillsTools} as an MCP resource
- * (for clients that support resource reading).
- */
+/** Register each skill document as an MCP resource, for clients that read resources. */
 export function registerSkillResources(
   mcpServer: McpServer,
   skillsTools: SkillsTools,
@@ -152,12 +135,12 @@ export function registerSkillResources(
   for (const [skillName, content] of skills) {
     const uri = `skill://p4-plan/${skillName}`;
 
-    // Extract description from YAML frontmatter
-    const descMatch = content.match(
+    // Pull the description out of the SKILL.md YAML frontmatter.
+    const descriptionMatch = content.match(
       /^---\s*\n[\s\S]*?description:\s*(.+)\n[\s\S]*?---/,
     );
-    const description = descMatch
-      ? descMatch[1].trim()
+    const description = descriptionMatch
+      ? descriptionMatch[1].trim()
       : `P4 Plan ${skillName} skill`;
 
     mcpServer.registerResource(
@@ -174,11 +157,8 @@ export function registerSkillResources(
 }
 
 /**
- * Build a fully-wired {@link McpServer}: instantiate it, register all tools and
- * skill resources, and return it ready to connect to a transport.
- *
- * This is intentionally transport-agnostic — the caller connects it to stdio
- * (production) or an in-memory transport (integration tests).
+ * Build a fully-wired McpServer, ready to connect to a transport. Transport-
+ * agnostic: the caller attaches stdio (production) or an in-memory transport (tests).
  */
 export function createMcpServer(options: {
   toolsService: ToolsService;
