@@ -295,4 +295,22 @@ describe('GraphQL Queries Validation', () => {
       ).toBe(true);
     });
   });
+
+  // Pipeline support (feature "Better skilled MCP for pipelines"): fetching an
+  // item must surface which pipeline task it is linked to. Guards against a
+  // refactor silently dropping the pipeline linkage from get_tasks.
+  describe('pipeline linkage coverage', () => {
+    it('GET_TASKS_QUERY selects linkedToPipelineTask with id and name', () => {
+      const pipelineBlocks = [
+        ...taskCrudQueries.GET_TASKS_QUERY.matchAll(
+          /linkedToPipelineTask\s*{([^}]*)}/g,
+        ),
+      ];
+      expect(pipelineBlocks).toHaveLength(2);
+      for (const [, fields] of pipelineBlocks) {
+        expect(fields).toContain('id');
+        expect(fields).toContain('name');
+      }
+    });
+  });
 });

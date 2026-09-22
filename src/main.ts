@@ -4,79 +4,13 @@
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { McpTool, ToolsService } from './tools/tools.service';
+import { ToolsService } from './tools/tools.service';
 import { GraphQLClientService } from './graphql-client/graphql-client.service';
 import { SkillsTools } from './tools/skills.tools';
 import { SERVER_INSTRUCTIONS } from './config/server-instructions';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
 import { loggerFactory } from './factories/logger.factory';
-
-/**
- * Convert a JSON Schema property definition to a Zod schema.
- * The SDK's server.tool() requires Zod schemas for parameter validation.
- */
-function jsonSchemaPropertyToZod(prop: Record<string, unknown>): z.ZodTypeAny {
-  const type = prop.type as string;
-  const enumValues = prop.enum as string[] | undefined;
-
-  if (enumValues && type === 'string') {
-    return z.enum(enumValues as [string, ...string[]]);
-  }
-
-  switch (type) {
-    case 'string':
-      return z.string();
-    case 'number':
-      return z.number();
-    case 'boolean':
-      return z.boolean();
-    case 'array': {
-      const items = prop.items as Record<string, unknown> | undefined;
-      if (items) {
-        return z.array(jsonSchemaPropertyToZod(items));
-      }
-      return z.array(z.unknown());
-    }
-    case 'object': {
-      const properties = prop.properties as
-        | Record<string, Record<string, unknown>>
-        | undefined;
-      if (properties) {
-        const shape: Record<string, z.ZodTypeAny> = {};
-        const required = (prop.required as string[]) || [];
-        for (const [key, value] of Object.entries(properties)) {
-          const fieldSchema = jsonSchemaPropertyToZod(value);
-          shape[key] = required.includes(key)
-            ? fieldSchema
-            : fieldSchema.optional();
-        }
-        return z.object(shape);
-      }
-      return z.record(z.string(), z.unknown());
-    }
-    default:
-      return z.unknown();
-  }
-}
-
-/**
- * Convert an McpTool's inputSchema to a Zod object schema for the SDK.
- */
-function toolInputSchemaToZod(tool: McpTool): Record<string, z.ZodTypeAny> {
-  const shape: Record<string, z.ZodTypeAny> = {};
-  const properties = tool.inputSchema.properties;
-  const required = tool.inputSchema.required || [];
-
-  for (const [key, value] of Object.entries(properties)) {
-    const prop = value as Record<string, unknown>;
-    const fieldSchema = jsonSchemaPropertyToZod(prop);
-    shape[key] = required.includes(key) ? fieldSchema : fieldSchema.optional();
-  }
-
-  return shape;
-}
+import { createMcpServer } from './factories/mcp-server.factory';
 
 async function bootstrap() {
   const logger = loggerFactory;
@@ -126,80 +60,15 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  const mcpServer = new McpServer(
-    {
-      name: 'p4-plan-mcp',
-      version: '1.0.0',
-    },
-    {
-      instructions: SERVER_INSTRUCTIONS,
-    },
-  );
-
-  const tools = toolsService.listTools();
-  logger.log(`Registering ${tools.length} tools`, 'P4PlanMCP');
-
-  for (const tool of tools) {
-    const zodShape = toolInputSchemaToZod(tool);
-
-    mcpServer.registerTool(
-      tool.name,
-      {
-        description: tool.description,
-        inputSchema: zodShape,
-      },
-      async (args) => {
-        const result = await toolsService.callTool(
-          tool.name,
-          args as Record<string, unknown>,
-          authToken,
-        );
-        return {
-          content: result.content.map((content) => {
-            if (content.type === 'image') {
-              return {
-                type: 'image' as const,
-                data: content.data ?? '',
-                mimeType: content.mimeType ?? 'application/octet-stream',
-              };
-            }
-            return {
-              type: 'text' as const,
-              text: content.text ?? '',
-            };
-          }),
-          isError: result.isError,
-        };
-      },
-    );
-  }
-
-  // Register skill documents as MCP resources (for clients that support resource reading)
   const skillsTools = app.get(SkillsTools);
-  for (const [skillName, content] of skillsTools.getSkillContents()) {
-    const uri = `skill://p4-plan/${skillName}`;
 
-    // Extract description from YAML frontmatter
-    const descMatch = content.match(
-      /^---\s*\n[\s\S]*?description:\s*(.+)\n[\s\S]*?---/,
-    );
-    const description = descMatch
-      ? descMatch[1].trim()
-      : `P4 Plan ${skillName} skill`;
-
-    mcpServer.registerResource(
-      skillName,
-      uri,
-      { description, mimeType: 'text/markdown' },
-      () => ({
-        contents: [{ uri, text: content, mimeType: 'text/markdown' }],
-      }),
-    );
-  }
-  logger.log(
-    `Registered ${skillsTools.getSkillContents().size} skill resources`,
-    'P4PlanMCP',
-  );
+  const mcpServer = createMcpServer({
+    toolsService,
+    skillsTools,
+    authToken,
+    instructions: SERVER_INSTRUCTIONS,
+    logger,
+  });
 
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);

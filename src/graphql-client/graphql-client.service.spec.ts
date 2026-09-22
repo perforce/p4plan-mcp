@@ -12,7 +12,12 @@ describe('GraphQLClientService', () => {
   let service: GraphQLClientService;
   let mockHttpService: jest.Mocked<HttpService>;
   let mockConfigService: jest.Mocked<ConfigService>;
-  let mockLogger: { log: jest.Mock; error: jest.Mock; warn: jest.Mock };
+  let mockLogger: {
+    log: jest.Mock;
+    error: jest.Mock;
+    warn: jest.Mock;
+    debug: jest.Mock;
+  };
 
   beforeEach(async () => {
     mockHttpService = {
@@ -36,6 +41,7 @@ describe('GraphQLClientService', () => {
       log: jest.fn(),
       error: jest.fn(),
       warn: jest.fn(),
+      debug: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -363,6 +369,65 @@ describe('GraphQLClientService', () => {
         'GraphQL API unreachable at http://localhost:8080 — MCP tools will fail until it is available',
         'GraphQLClientService',
       );
+    });
+  });
+
+  // Guards the debug-log sanitizer (src/graphql-client/graphql-client.service.ts
+  // `debugOperation`). Security finding TM-007 / CR-2 flags sensitive data in
+  // debug logs; these tests lock the current masking so regressions — or a
+  // future broadening of the sanitizer — are caught.
+  describe('query() debug-log redaction', () => {
+    const okResponse = {
+      data: { data: { ok: true } },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as InternalAxiosRequestConfig,
+    } as AxiosResponse;
+
+    function loggedDebugText(): string {
+      return (mockLogger.debug.mock.calls as unknown[][])
+        .map((call) => String(call[0]))
+        .join('\n');
+    }
+
+    it('masks sensitive variable values (password/secret/pat) in debug output', async () => {
+      mockHttpService.post.mockReturnValue(of(okResponse));
+
+      await service.query(
+        'query TestOp { ok }',
+        { password: 'hunter2', apiSecret: 's3cr3t', pat: 'ghp_abc123' },
+        'auth-token',
+      );
+
+      const logged = loggedDebugText();
+      expect(mockLogger.debug).toHaveBeenCalled();
+      expect(logged).toContain('******');
+      expect(logged).not.toContain('hunter2');
+      expect(logged).not.toContain('s3cr3t');
+      expect(logged).not.toContain('ghp_abc123');
+    });
+
+    it('preserves non-sensitive variable values so debug logs stay useful', async () => {
+      mockHttpService.post.mockReturnValue(of(okResponse));
+
+      await service.query(
+        'query TestOp { ok }',
+        { projectId: 'p-1', username: 'bob' },
+        'auth-token',
+      );
+
+      const logged = loggedDebugText();
+      expect(logged).toContain('p-1');
+      expect(logged).toContain('bob');
+    });
+
+    it('never writes the bearer auth token to debug logs', async () => {
+      mockHttpService.post.mockReturnValue(of(okResponse));
+
+      await service.query('query TestOp { ok }', {}, 'super-secret-token');
+
+      expect(loggedDebugText()).not.toContain('super-secret-token');
     });
   });
 });
