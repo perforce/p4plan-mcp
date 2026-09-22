@@ -301,13 +301,16 @@ describe('GraphQL Queries Validation', () => {
   // refactor silently dropping the pipeline linkage from get_tasks.
   describe('pipeline linkage coverage', () => {
     it('GET_TASKS_QUERY selects linkedToPipelineTask with id and name', () => {
-      expect(taskCrudQueries.GET_TASKS_QUERY).toContain('linkedToPipelineTask');
-      const pipelineBlock = taskCrudQueries.GET_TASKS_QUERY.match(
-        /linkedToPipelineTask\s*{([^}]*)}/,
-      );
-      expect(pipelineBlock).not.toBeNull();
-      expect(pipelineBlock?.[1]).toContain('id');
-      expect(pipelineBlock?.[1]).toContain('name');
+      const pipelineBlocks = [
+        ...taskCrudQueries.GET_TASKS_QUERY.matchAll(
+          /linkedToPipelineTask\s*{([^}]*)}/g,
+        ),
+      ];
+      expect(pipelineBlocks).toHaveLength(2);
+      for (const [, fields] of pipelineBlocks) {
+        expect(fields).toContain('id');
+        expect(fields).toContain('name');
+      }
     });
   });
 });
