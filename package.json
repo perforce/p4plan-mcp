@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@nestjs/axios": "4.0.1",
+    "@nestjs/axios": "12.0.1",
     "@nestjs/common": "11.1.17",
     "@nestjs/config": "4.0.4",
     "@nestjs/core": "11.1.18",
