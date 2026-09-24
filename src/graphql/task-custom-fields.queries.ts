@@ -8,6 +8,7 @@
 export const GET_WORKFLOWS_QUERY = /* GraphQL */ `
   query GetWorkflows($id: ID!) {
     workflows(id: $id) {
+      __typename
       id
       projectID
       name
@@ -29,9 +30,6 @@ export const GET_WORKFLOWS_QUERY = /* GraphQL */ `
             }
           }
         }
-      }
-      ... on PipelineWorkflow {
-        __typename
       }
     }
   }

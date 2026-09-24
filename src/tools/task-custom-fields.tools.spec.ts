@@ -356,6 +356,7 @@ describe('TaskCustomFieldsTools', () => {
       mockGraphqlClient.query.mockResolvedValue({
         workflows: [
           {
+            __typename: 'StatusWorkflow',
             id: 'wf-1',
             projectID: 'p-1',
             name: 'Dev Pipeline',
@@ -401,10 +402,11 @@ describe('TaskCustomFieldsTools', () => {
       expect(data.workflows[0].statuses[0].canTransitionTo).toHaveLength(1);
     });
 
-    it('should identify PipelineWorkflow when statuses are absent', async () => {
+    it('should report PipelineWorkflow from __typename', async () => {
       mockGraphqlClient.query.mockResolvedValue({
         workflows: [
           {
+            __typename: 'PipelineWorkflow',
             id: 'wf-2',
             projectID: 'p-1',
             name: 'Simple Flow',
@@ -419,6 +421,28 @@ describe('TaskCustomFieldsTools', () => {
       }>(result);
 
       expect(data.workflows[0].type).toBe('PipelineWorkflow');
+    });
+
+    it('does not mistake a status workflow with no statuses for a pipeline', async () => {
+      mockGraphqlClient.query.mockResolvedValue({
+        workflows: [
+          {
+            __typename: 'StatusWorkflow',
+            id: 'wf-3',
+            projectID: 'p-1',
+            name: 'Empty Flow',
+            canSetWorkflowOnItems: true,
+            statuses: [],
+          },
+        ],
+      });
+
+      const result = await callTool('get_workflows', { projectId: 'p-1' });
+      const data = parseToolResult<{
+        workflows: { type: string }[];
+      }>(result);
+
+      expect(data.workflows[0].type).toBe('StatusWorkflow');
     });
 
     it('should throw when projectId is missing', async () => {

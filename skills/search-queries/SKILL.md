@@ -113,8 +113,59 @@ Example: `Confidence="High"`, `Risk="Low"`
 | `Duration`      | `Duration=5`                      | Duration in days      |
 | `Color`         | `Color="red"`                     | Item color            |
 | `Committedto`   | `Committedto:Item("Sprint 1")`    | Committed to sprint   |
-| `ID`            | `ID=42`                           | Item ID number        |
 | `Level`         | `Level<3`                         | Hierarchy depth       |
+
+## The Two ID Columns
+
+P4 Plan items have **two** different IDs, and both are queryable. Picking the wrong one is the
+most common cause of a search that returns nothing.
+
+| Column       | Syntax               | What it is                                                     |
+|--------------|----------------------|----------------------------------------------------------------|
+| `ID`         | `ID=4217`            | The **local ID** -- the number shown in the P4 Plan UI's "ID" column |
+| `Databaseid` | `Databaseid=500100`  | The **database ID** -- the `id` every MCP tool accepts and returns |
+
+Both are returned on every item -- as `id` (database) and `localID` (local) -- so you rarely need
+to look either up. When a user quotes a bare number, decide by **where it came from**, not by how
+long it is:
+
+- Read off the P4 Plan UI's "ID" column, or spoken as "bug 4217" / "item 42" -> **local ID**,
+  use `ID=`.
+- Copied from a tool response, a P4 Plan URL, or handed over by another agent -> **database ID**,
+  pass it straight to `get_tasks`.
+
+If the origin is genuinely unclear, ask, or try `Databaseid=` and fall back to `ID=` -- do not
+guess from digit count, since the two ranges overlap.
+
+```
+# User says "look at bug 4217" -- resolve the UI number to a real item
+ID=4217
+
+# Confirm which item a database ID refers to, scoped to one section
+Databaseid=500100
+```
+
+**Never binary-search for a local ID.** A single `ID=` query resolves it directly.
+
+An item's `localID` is a property of the item, not of the query -- it is resolved from the item
+alone and is the same whichever section you search. `projectID` is not: for an item listed in two
+sections (a committed backlog item, say) a search reports the section you searched, while
+`get_tasks` reports the section the item was created in. Use `id` for identity.
+
+Local IDs are unique only **within one section**. The Backlog, Planning and QA sections of the
+same project can each have an item with `ID=42`, so always run an `ID=` query against the section
+the user means, and say which section you searched when you report the result.
+
+## Workflow and Pipeline Columns
+
+| Column                 | Syntax                                 | Notes                                                |
+|------------------------|----------------------------------------|------------------------------------------------------|
+| `Pipelineorworkflow`   | `Pipelineorworkflow="Feature Delivery"` | The workflow **or** pipeline set on the item, by name |
+
+Use the workflow/pipeline name exactly as `get_workflows` returns it. This matches both status
+workflows and pipelines — a pipeline match returns the items *carrying* the pipeline, not the
+pipeline tasks it spawned. See the [pipeline](../pipeline/SKILL.md) skill for how to list the
+stages themselves.
 
 ## Text Search Columns
 
@@ -128,6 +179,25 @@ Example: `Confidence="High"`, `Risk="Low"`
 | `Hyperlink`           | `Hyperlink:Text("text")`           |
 | `Subprojectpath`      | `Subprojectpath:Text("text")`      |
 | `Releasetag`          | `Releasetag:Text("text")`          |
+
+## Quotes Inside Text() Searches
+
+Item names in P4 Plan routinely contain double quotes. Escape them as `\"` inside the literal --
+substituting a name verbatim breaks the parse:
+
+```
+# Item actually named:  Checkout redesign ("Buy now" flow)
+
+# CORRECT -- embedded quotes escaped
+Subprojectpath:Text("Checkout redesign (\"Buy now\" flow)")
+
+# WRONG -- fails with the misleading error 'Space is not allowed here'
+Subprojectpath:Text("Checkout redesign ("Buy now" flow)")
+```
+
+The error names whitespace, not quoting, so it is easy to misdiagnose. If a `Text()` search fails
+that way, check for unescaped quotes before touching anything else. Searching a distinctive
+quote-free fragment of the name also works and avoids the problem entirely.
 
 ## Date/Time Columns
 

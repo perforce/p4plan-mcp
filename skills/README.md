@@ -15,7 +15,10 @@ skills/
 ├── bug-tracking/SKILL.md         # Bugs, severity, QA section
 ├── custom-fields/SKILL.md        # Custom columns, project-specific metadata
 ├── gantt-scheduling/SKILL.md     # Scheduled tasks, timeline, dependencies
-└── workflows/SKILL.md            # Workflows, pipelines, status state machines
+├── workflows/SKILL.md            # Status workflows, status state machines
+├── pipeline/SKILL.md             # Pipeline stages, breakdown, defects in a pipeline stage
+├── comment-html-format/SKILL.md  # HTML formatting for comments and multiline fields
+└── mentions/SKILL.md             # @user mentions in comments and multiline fields
 ```
 
 ## Skill Descriptions
@@ -30,7 +33,10 @@ skills/
 | **bug-tracking**       | bugs, triage, severity, QA, defects, create bug, screenshots                   |
 | **custom-fields**      | custom fields, columns, metadata                                               |
 | **gantt-scheduling**   | Gantt, schedule, timeline, dependencies                                        |
-| **workflows**          | workflow, pipeline, sign-off, approval                                         |
+| **workflows**          | workflow, sign-off, approval, status transitions                               |
+| **pipeline**            | pipeline, pipeline task, stage, breakdown, bug in a pipeline stage             |
+| **comment-html-format** | comments, multiline fields, HTML formatting, allowed tags                      |
+| **mentions**            | @mentions, user references, notifications in comments                          |
 
 ## Using Skills with AI Agents
 

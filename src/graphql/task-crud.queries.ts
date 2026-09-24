@@ -32,6 +32,7 @@ export const GET_TASKS_QUERY = /* GraphQL */ `
   query GetTasks($ids: [ID!]!) {
     itemsByIDs(ids: $ids) {
       id
+      localID
       name
       projectID
       createdOn
@@ -85,6 +86,13 @@ export const GET_TASKS_QUERY = /* GraphQL */ `
         workRemaining
         isUserStory
         userStory
+        createdFromWorkflow
+        canBeBrokenDown
+        canHaveWorkflowType
+        linkedToPipelineTask {
+          id
+          name
+        }
       }
       ... on Bug {
         severity
@@ -100,6 +108,13 @@ export const GET_TASKS_QUERY = /* GraphQL */ `
         percentCompleted
         isUserStory
         userStory
+        createdFromWorkflow
+        canBeBrokenDown
+        canHaveWorkflowType
+        linkedToPipelineTask {
+          id
+          name
+        }
       }
       ... on Sprint {
         start
@@ -129,6 +144,8 @@ export const CREATE_BACKLOG_TASKS_MUTATION = /* GraphQL */ `
       previousItemID: $previousItemID
     ) {
       id
+      projectID
+      localID
       name
       status
       backlogPriority
@@ -148,6 +165,8 @@ export const CREATE_SPRINT_TASKS_MUTATION = /* GraphQL */ `
       previousItemID: $previousItemID
     ) {
       id
+      projectID
+      localID
       name
       status
       backlogPriority
@@ -160,6 +179,7 @@ export const SEARCH_TASKS_QUERY = /* GraphQL */ `
     items(id: $id, findQuery: $findQuery, limit: $limit) {
       __typename
       id
+      localID
       name
       subprojectPath
       projectID
@@ -181,3 +201,68 @@ export const SEARCH_TASKS_QUERY = /* GraphQL */ `
 
 // Note: Update mutations are built dynamically by buildUpdateMutation helper
 // based on task type (BacklogTask, Bug, ScheduledTask)
+
+const assignedToFields = `assignedTo {
+          user {
+            id
+            name
+          }
+        }`;
+
+export const UPDATE_ITEM_RETURN_FIELDS: Record<string, string> = {
+  Bug: `id
+        projectID
+        localID
+        name
+        status
+        bugPriority
+        sprintPriority
+        severity
+        workRemaining
+        detailedDescription
+        stepsToReproduce
+        ${assignedToFields}
+        workflowStatus {
+          id
+          name
+        }`,
+  ScheduledTask: `id
+        projectID
+        localID
+        name
+        status
+        backlogPriority
+        points
+        estimatedDays
+        percentCompleted
+        isUserStory
+        userStory
+        ${assignedToFields}
+        workflowStatus {
+          id
+          name
+        }`,
+  BacklogTask: `id
+        projectID
+        localID
+        name
+        status
+        backlogPriority
+        sprintPriority
+        points
+        estimatedDays
+        workRemaining
+        isUserStory
+        userStory
+        ${assignedToFields}
+        workflowStatus {
+          id
+          name
+        }`,
+};
+
+export const UPDATE_STATUS_RETURN_FIELDS = `id
+        projectID
+        localID
+        name
+        status`;

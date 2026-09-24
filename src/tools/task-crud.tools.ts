@@ -23,6 +23,8 @@ import {
   UPDATE_SPRINT_MUTATION,
   UPDATE_RELEASE_MUTATION,
   GET_TASKS_QUERY,
+  UPDATE_ITEM_RETURN_FIELDS,
+  UPDATE_STATUS_RETURN_FIELDS,
 } from '../graphql';
 
 /**
@@ -55,7 +57,7 @@ export class TaskCrudTools extends TaskToolsBase {
       definition: {
         name: 'get_tasks',
         description:
-          'Get full details of one or more items by ID (max 20). Works for BacklogTask, ScheduledTask, Bug, Sprint, and Release. Returns status, assignments, workflow state, and all type-specific fields.',
+          'Get full details of one or more items by ID (max 20). Works for BacklogTask, ScheduledTask, Bug, Sprint, and Release. Returns status, assignments, workflow state, and all type-specific fields. Each item also returns localID — the number shown in the P4 Plan UI\'s "ID" column — alongside the database id. If the user quotes a UI number rather than a database id, resolve it with search_tasks using ID=<number> instead of guessing.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -63,7 +65,7 @@ export class TaskCrudTools extends TaskToolsBase {
               type: 'array',
               items: { type: 'string' },
               description:
-                'Array of task IDs to retrieve (max 20). For a single task, pass a one-element array.',
+                'Array of database item IDs to retrieve (max 20) — the `id` field from other tool responses, not the UI "ID" column. For a single task, pass a one-element array.',
             },
           },
           required: ['taskIds'],
@@ -83,7 +85,7 @@ export class TaskCrudTools extends TaskToolsBase {
             findQuery: {
               type: 'string',
               description:
-                'P4 Plan Find query. Values use human-readable text, NOT enum values. Examples: Itemname:Text("login"), Itemtype="Bug" AND Status="Not done", Severity="Critical", Bugpriority="Very high priority", Assignedto:Resource("john"), GeneralconditionIncurrentsprint=true. For simple name search use Itemname:Text("text"). See search-queries skill for full syntax.',
+                'P4 Plan Find query. Values use human-readable text, NOT enum values. Examples: Itemname:Text("login"), Itemtype="Bug" AND Status="Not done", Severity="Critical", Bugpriority="Very high priority", Assignedto:Resource("john"), GeneralconditionIncurrentsprint=true. For simple name search use Itemname:Text("text"). To resolve an ID: ID=<n> matches the UI "ID" column (local ID, unique per section) and Databaseid=<n> matches the database id — never binary-search for either. See search-queries skill for full syntax.',
             },
             projectId: {
               type: 'string',
@@ -176,7 +178,7 @@ export class TaskCrudTools extends TaskToolsBase {
             parentItemId: {
               type: 'string',
               description:
-                'ID of the parent item — the new item will be created as a child of this item. Convenience shortcut: sets previousItemId to this value and indentation to child level. Not supported for bug type. (backlog_task, scheduled_task, sprint_task)',
+                'ID of the parent item — the new item will be created as a child of this item. Convenience shortcut: sets previousItemId to this value and indentation to child level. Not supported for bug type. (backlog_task, scheduled_task, sprint_task, sprint, release)',
             },
           },
           required: ['type', 'name'],
@@ -489,7 +491,12 @@ export class TaskCrudTools extends TaskToolsBase {
     const result = await this.graphqlClient.query<{
       itemsByIDs: Array<{
         id: string;
+        localID: string;
         name: string;
+        createdFromWorkflow?: boolean;
+        canBeBrokenDown?: boolean;
+        canHaveWorkflowType?: string;
+        linkedToPipelineTask?: { id: string; name: string } | null;
         projectID: string;
         createdOn: string;
         lastUpdatedOn: string;
@@ -543,6 +550,7 @@ export class TaskCrudTools extends TaskToolsBase {
     const result = await this.graphqlClient.query<{
       items: Array<{
         id: string;
+        localID: string;
         name: string;
         subprojectPath: string;
         projectID: string;
@@ -635,6 +643,8 @@ export class TaskCrudTools extends TaskToolsBase {
     const result = await this.graphqlClient.query<{
       createBacklogTasks: Array<{
         id: string;
+        projectID: string;
+        localID: string;
         name: string;
         status: string;
         backlogPriority?: string;
@@ -677,7 +687,7 @@ export class TaskCrudTools extends TaskToolsBase {
       createBugs: Array<{
         id: string;
         projectID: string;
-        localID: number;
+        localID: string;
         name: string;
         status: string;
         severity: string;
@@ -731,7 +741,7 @@ export class TaskCrudTools extends TaskToolsBase {
       createScheduledTasks: Array<{
         id: string;
         projectID: string;
-        localID: number;
+        localID: string;
         name: string;
         status: string;
         estimatedDays: number;
@@ -818,8 +828,12 @@ export class TaskCrudTools extends TaskToolsBase {
       projectID: projectId,
       createReleaseInput: releaseInput,
     };
-    if (args.previousItemId) vars.previousItemID = args.previousItemId;
-    // parentItemId doesn't apply to releases (they're always top-level planning items)
+    if (args.parentItemId) {
+      vars.previousItemID = args.parentItemId;
+      releaseInput.indentationLevel = 1;
+    } else if (args.previousItemId) {
+      vars.previousItemID = args.previousItemId;
+    }
 
     const result = await this.graphqlClient.query<{
       createRelease: {
@@ -864,6 +878,8 @@ export class TaskCrudTools extends TaskToolsBase {
     const result = await this.graphqlClient.query<{
       createSprintTasks: Array<{
         id: string;
+        projectID: string;
+        localID: string;
         name: string;
         status: string;
         backlogPriority?: string;
@@ -897,11 +913,20 @@ export class TaskCrudTools extends TaskToolsBase {
 
     const { mutation, resultKey } = this.buildUpdateMutation(
       taskType,
-      'id\n          name\n          status',
+      UPDATE_STATUS_RETURN_FIELDS,
     );
 
     const result = await this.graphqlClient.query<
-      Record<string, { id: string; name: string; status: string }>
+      Record<
+        string,
+        {
+          id: string;
+          projectID: string;
+          localID: string;
+          name: string;
+          status: string;
+        }
+      >
     >(mutation, { input }, authToken);
 
     return {
@@ -1230,61 +1255,9 @@ export class TaskCrudTools extends TaskToolsBase {
       input.outOfOfficeStatus = args.outOfOfficeStatus;
     }
 
-    // Return fields differ by type
-    const assignedToFields = `assignedTo {
-            user {
-              id
-              name
-            }
-          }`;
-    const returnFieldsByType: Record<string, string> = {
-      Bug: `id
-          name
-          status
-          bugPriority
-          sprintPriority
-          severity
-          workRemaining
-          detailedDescription
-          stepsToReproduce
-          ${assignedToFields}
-          workflowStatus {
-            id
-            name
-          }`,
-      ScheduledTask: `id
-          name
-          status
-          backlogPriority
-          points
-          estimatedDays
-          percentCompleted
-          isUserStory
-          userStory
-          ${assignedToFields}
-          workflowStatus {
-            id
-            name
-          }`,
-      BacklogTask: `id
-          name
-          status
-          backlogPriority
-          sprintPriority
-          points
-          estimatedDays
-          workRemaining
-          isUserStory
-          userStory
-          ${assignedToFields}
-          workflowStatus {
-            id
-            name
-          }`,
-    };
-
     const returnFields =
-      returnFieldsByType[taskType] || returnFieldsByType.BacklogTask;
+      UPDATE_ITEM_RETURN_FIELDS[taskType] ||
+      UPDATE_ITEM_RETURN_FIELDS.BacklogTask;
     const { mutation, resultKey } = this.buildUpdateMutation(
       taskType,
       returnFields,

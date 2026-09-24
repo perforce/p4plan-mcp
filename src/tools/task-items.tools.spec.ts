@@ -80,6 +80,27 @@ describe('TaskItemsTools', () => {
       expect(data.tasks[1].name).toBe('Write tests');
     });
 
+    it('should return localID on each task', async () => {
+      mockGraphqlClient.query.mockResolvedValue({
+        todoList: [
+          {
+            id: 't-1',
+            localID: '9020',
+            name: 'Fix login',
+            projectID: 'p-1',
+            status: 'inProgress',
+          },
+        ],
+      });
+
+      const result = await callTool('get_my_tasks', {});
+      const data = parseToolResult<{
+        tasks: { id: string; localID: string }[];
+      }>(result);
+
+      expect(data.tasks[0]).toMatchObject({ id: 't-1', localID: '9020' });
+    });
+
     it('should pass showCompleted option to query', async () => {
       mockGraphqlClient.query.mockResolvedValue({ todoList: [] });
 

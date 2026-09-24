@@ -171,7 +171,7 @@ The image is published to Docker Hub at [`perforce/p4plan-mcp`](https://hub.dock
 
 > **Note:** Use `host.docker.internal` (macOS/Windows) or `172.17.0.1` (Linux) to reach the P4 Plan GraphQL API running on the host machine.
 
-> **Pin a specific version** by replacing `:latest` with `:2026.2.0` (or whichever tag) for reproducible deployments.
+> **Pin a specific version** by replacing `:latest` with `:2026.3.0` (or whichever tag) for reproducible deployments.
 
 **Build locally** (for development against unreleased changes):
 
@@ -194,18 +194,22 @@ Edit `.env` with your settings:
 
 ```dotenv
 # JWT token for authenticating with P4 Plan GraphQL API
+# Obtain via: login mutation on the GraphQL API
 P4PLAN_API_AUTH_TOKEN=your-jwt-token
 
-# P4 Plan GraphQL API URL
-P4PLAN_API_URL=http://localhost:4000
+# P4 Plan GraphQL API URL — base origin only. Do not include a path or a
+# trailing slash: the server appends /graphql, /healthcheck and /attachment/<id>
+# itself, so a trailing slash produces //graphql.
+P4PLAN_API_URL=https://p4plan-api.example.com
 
-# Logging level
-LOG_LEVEL=debug
+# Logging
+LOG_LEVEL=info
 
-# Search results limit (default: 400)
+# Maximum number of results returned by search_tasks (default: 400)
 # SEARCH_LIMIT=400
 
-# Allow self-signed TLS certificates (for HTTPS APIs with untrusted certs)
+# Allow self-signed TLS certificates when connecting to the P4 Plan API over HTTPS
+# Set to true if your API uses a self-signed or untrusted certificate
 # P4PLAN_ALLOW_SELF_SIGNED_CERTS=true
 ```
 
@@ -306,7 +310,8 @@ Copy the `access_token` value and use it in your MCP client configuration.
 <details>
   <summary><strong><code>get_tasks</code></strong> - Get detailed information for one or more items by ID (max 20)</summary>
 
-- **Parameters**: `taskIds` (array of strings, max 20)
+- **Parameters**: `taskIds` (array of strings, max 20) -- database item IDs, i.e. the `id` returned by other tools
+- Every item response includes both `id` (the database ID that all tools take) and `localID` (the number shown in the P4 Plan UI's "ID" column).
 - **Use cases**: Full item details, link inspection, batch retrieval of multiple items
 
 </details>
@@ -317,6 +322,7 @@ Copy the `access_token` value and use it in your MCP client configuration.
 - **Parameters**: `findQuery`, `projectId`
 - Uses P4 Plan Find query syntax for all searches. Call `read_skill` with `skillName="search-queries"` first to get exact column names, operators, and value formats. For simple name search use `Itemname:Text("text")`. Supports filtering by status, assignee, severity, item type, dates, boolean conditions, and combinations with AND/OR/NOT.
 - Each project has three sections (Backlog, QA, Planning) with different IDs.
+- To resolve an ID, query it directly: `ID=<n>` matches the UI "ID" column (the local ID, unique only within a section) and `Databaseid=<n>` matches the database ID.
 - **Use cases**: Item discovery, filtering, reporting
 
 </details>
@@ -518,7 +524,7 @@ Copy the `access_token` value and use it in your MCP client configuration.
 
 - **Parameters**: `skillName`
 - Returns the full Markdown content of the requested skill document. The AI agent **must** call this with `skillName="search-queries"` before composing any `findQuery` for `search_tasks`.
-- Available skills: `project-navigation`, `search-queries`, `task-management`, `planning`, `backlog-refinement`, `bug-tracking`, `custom-fields`, `gantt-scheduling`, `workflows`
+- Available skills: `project-navigation`, `search-queries`, `task-management`, `planning`, `backlog-refinement`, `bug-tracking`, `custom-fields`, `gantt-scheduling`, `workflows`, `pipeline`, `comment-html-format`, `mentions`
 - **Use cases**: Learn correct query syntax, discover tool usage patterns, understand domain concepts
 
 </details>
@@ -692,7 +698,7 @@ claude mcp add p4-plan \
 ### Environment Variables
 
 - `P4PLAN_API_AUTH_TOKEN` - JWT token for authenticating with the P4 Plan GraphQL API
-- `P4PLAN_API_URL` - P4 Plan GraphQL API URL (default: `http://localhost:4000`)
+- `P4PLAN_API_URL` - P4 Plan GraphQL API URL, base origin only — no path, no trailing slash (the server appends `/graphql`, `/healthcheck` and `/attachment/<id>`). Defaults to `http://localhost:4000` when unset; `config-example.env` ships an HTTPS example.
 - `P4PLAN_ALLOW_SELF_SIGNED_CERTS` - Set to `true` to accept self-signed or untrusted TLS certificates when connecting to the API over HTTPS (default: `false`)
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `debug`)
 - `SEARCH_LIMIT` - Maximum number of results returned by `search_tasks` (default: `400`)
@@ -714,7 +720,10 @@ The server includes **skill files** — domain-specific guides that help AI agen
 | bug-tracking       | Bugs, severity, QA section                                  |
 | custom-fields      | Custom columns, project-specific metadata                   |
 | gantt-scheduling   | Scheduled tasks, timeline, dependencies                     |
-| workflows          | Workflows, pipelines, status state machines                 |
+| workflows          | Status workflows, status state machines                     |
+| pipeline           | Pipeline stages, breakdown, defects in a pipeline stage     |
+| comment-html-format | Allowed HTML subset for comments and multiline fields      |
+| mentions           | @user mention syntax in comments                            |
 
 See [`skills/README.md`](skills/README.md) for details on using skills with different AI clients.
 

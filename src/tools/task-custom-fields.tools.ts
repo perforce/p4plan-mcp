@@ -364,7 +364,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
             connectedTo: { id: string; name: string };
           }>;
         }>;
-        __typename?: string;
+        __typename: string;
       }>;
     }>(GET_WORKFLOWS_QUERY, { id: projectId }, authToken);
 
@@ -372,7 +372,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
     const workflows = result.workflows.map((workflow) => ({
       id: workflow.id,
       name: workflow.name,
-      type: workflow.statuses ? 'StatusWorkflow' : 'PipelineWorkflow',
+      type: workflow.__typename,
       canSetWorkflowOnItems: workflow.canSetWorkflowOnItems,
       showInQA: workflow.showInQA,
       showInPlanning: workflow.showInPlanning,

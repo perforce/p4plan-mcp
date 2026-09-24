@@ -27,3 +27,22 @@ jobs:
       - run: npm run lint:check
       - run: npm run build
       - run: npm test
+      - run: npm run test:e2e
+
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Fail the build on high/critical advisories in the dependencies we ship
+      # (dist/ runtime deps). Dev-only tooling is excluded via --omit=dev.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

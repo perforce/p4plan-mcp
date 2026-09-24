@@ -35,6 +35,26 @@ function isValidGraphQL(query: string): boolean {
   return startsCorrectly && balancedBraces && balancedParens;
 }
 
+function fieldsAtDepth(text: string, target: number): string {
+  let depth = 0;
+  let out = '';
+  for (const ch of text) {
+    if (ch === '{') {
+      depth++;
+      continue;
+    }
+    if (ch === '}') {
+      depth--;
+      continue;
+    }
+    if (depth === target) out += ch;
+  }
+  return out;
+}
+
+const selectsLocalIdDirectly = (text: string, depth: number): boolean =>
+  /\blocalID\b/.test(fieldsAtDepth(text, depth));
+
 describe('GraphQL Queries Validation', () => {
   describe('auth.queries', () => {
     it('LOGIN_MUTATION should be valid GraphQL', () => {
@@ -209,6 +229,88 @@ describe('GraphQL Queries Validation', () => {
       expect(taskActionsQueries.UPDATE_SPRINT_MUTATION).toContain(
         'allocations',
       );
+    });
+  });
+
+  describe('localID coverage', () => {
+    const itemReturningOperations: Array<[string, string]> = [
+      ['GET_TASKS_QUERY', taskCrudQueries.GET_TASKS_QUERY],
+      ['SEARCH_TASKS_QUERY', taskCrudQueries.SEARCH_TASKS_QUERY],
+      [
+        'CREATE_BACKLOG_TASKS_MUTATION',
+        taskCrudQueries.CREATE_BACKLOG_TASKS_MUTATION,
+      ],
+      [
+        'CREATE_SPRINT_TASKS_MUTATION',
+        taskCrudQueries.CREATE_SPRINT_TASKS_MUTATION,
+      ],
+      ['GET_TODO_LIST_QUERY', taskItemsQueries.GET_TODO_LIST_QUERY],
+      ['CREATE_BUG_MUTATION', taskActionsQueries.CREATE_BUG_MUTATION],
+      [
+        'CREATE_SCHEDULED_TASK_MUTATION',
+        taskActionsQueries.CREATE_SCHEDULED_TASK_MUTATION,
+      ],
+      ['CREATE_SPRINT_MUTATION', taskActionsQueries.CREATE_SPRINT_MUTATION],
+      ['CREATE_RELEASE_MUTATION', taskActionsQueries.CREATE_RELEASE_MUTATION],
+      ['UPDATE_SPRINT_MUTATION', taskActionsQueries.UPDATE_SPRINT_MUTATION],
+      ['UPDATE_RELEASE_MUTATION', taskActionsQueries.UPDATE_RELEASE_MUTATION],
+      [
+        'COMMIT_TO_SPRINT_MUTATION',
+        taskActionsQueries.COMMIT_TO_SPRINT_MUTATION,
+      ],
+      [
+        'UNCOMMIT_FROM_SPRINT_MUTATION',
+        taskActionsQueries.UNCOMMIT_FROM_SPRINT_MUTATION,
+      ],
+    ];
+
+    it.each(itemReturningOperations)(
+      '%s selects localID on the returned item itself',
+      (_name, query) => {
+        expect(selectsLocalIdDirectly(query, 2)).toBe(true);
+      },
+    );
+
+    it.each(Object.keys(taskCrudQueries.UPDATE_ITEM_RETURN_FIELDS))(
+      'taskCrudQueries.UPDATE_ITEM_RETURN_FIELDS.%s selects localID on the item itself',
+      (taskType) => {
+        expect(
+          selectsLocalIdDirectly(
+            taskCrudQueries.UPDATE_ITEM_RETURN_FIELDS[taskType],
+            0,
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it('taskCrudQueries.UPDATE_ITEM_RETURN_FIELDS covers every updatable task type', () => {
+      expect(
+        Object.keys(taskCrudQueries.UPDATE_ITEM_RETURN_FIELDS).sort(),
+      ).toEqual(['BacklogTask', 'Bug', 'ScheduledTask']);
+    });
+
+    it('taskCrudQueries.UPDATE_STATUS_RETURN_FIELDS selects localID on the item itself', () => {
+      expect(
+        selectsLocalIdDirectly(taskCrudQueries.UPDATE_STATUS_RETURN_FIELDS, 0),
+      ).toBe(true);
+    });
+  });
+
+  // Pipeline support (feature "Better skilled MCP for pipelines"): fetching an
+  // item must surface which pipeline task it is linked to. Guards against a
+  // refactor silently dropping the pipeline linkage from get_tasks.
+  describe('pipeline linkage coverage', () => {
+    it('GET_TASKS_QUERY selects linkedToPipelineTask with id and name', () => {
+      const pipelineBlocks = [
+        ...taskCrudQueries.GET_TASKS_QUERY.matchAll(
+          /linkedToPipelineTask\s*{([^}]*)}/g,
+        ),
+      ];
+      expect(pipelineBlocks).toHaveLength(2);
+      for (const [, fields] of pipelineBlocks) {
+        expect(fields).toContain('id');
+        expect(fields).toContain('name');
+      }
     });
   });
 });
