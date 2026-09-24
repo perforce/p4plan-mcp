@@ -36,7 +36,6 @@
     {
       "registryType": "oci",
       "identifier": "docker.io/perforce/p4plan-mcp:2026.3.1",
-      "version": "2026.3.1",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
