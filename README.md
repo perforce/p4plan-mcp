@@ -171,7 +171,7 @@ The image is published to Docker Hub at [`perforce/p4plan-mcp`](https://hub.dock
 
 > **Note:** Use `host.docker.internal` (macOS/Windows) or `172.17.0.1` (Linux) to reach the P4 Plan GraphQL API running on the host machine.
 
-> **Pin a specific version** by replacing `:latest` with `:2026.3.0` (or whichever tag) for reproducible deployments.
+> **Pin a specific version** by replacing `:latest` with `:2026.3.1` (or whichever tag) for reproducible deployments.
 
 **Build locally** (for development against unreleased changes):
 
