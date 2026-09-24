@@ -114,7 +114,7 @@ jobs:
           jq --arg v "$PKG_VERSION" '
             .version = $v
             | .packages[0].version = $v
-            | .packages[1].version = $v
+            | del(.packages[1].version)
             | .packages[1].identifier = ("docker.io/perforce/p4plan-mcp:" + $v)
           ' server.json > server.json.tmp && mv server.json.tmp server.json
 
