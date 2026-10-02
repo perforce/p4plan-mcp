@@ -127,6 +127,29 @@ describe('jsonSchemaPropertyToZod', () => {
       expect(accepts(strings, '   ')).toBe(false);
     });
 
+    it('only splits comma-separated strings for plain string lists', () => {
+      const labels = {
+        type: 'array',
+        items: {
+          anyOf: [
+            {
+              type: 'object',
+              properties: { name: { type: 'string' } },
+              required: ['name'],
+            },
+            { type: 'string' },
+          ],
+        },
+      };
+      const enumList = {
+        type: 'array',
+        items: { type: 'string', enum: ['a', 'b'] },
+      };
+      expect(accepts(labels, 'Q1, 2026')).toBe(false);
+      expect(parse(labels, ['Q1, 2026'])).toEqual(['Q1, 2026']);
+      expect(accepts(enumList, 'a, b')).toBe(false);
+    });
+
     it('wraps a single non-string value', () => {
       expect(parse(strings, 7)).toEqual(['7']);
     });

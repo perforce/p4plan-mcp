@@ -347,7 +347,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
       });
     });
 
-    it('accepts drop-list options as a comma-separated string and type aliases', async () => {
+    it('accepts a type alias and keeps commas inside drop-list labels', async () => {
       mockQuery.mockResolvedValueOnce({ columns: [] }).mockResolvedValueOnce({
         createSingleSelectionDropListCustomColumn: { id: 'col-1' },
       });
@@ -359,7 +359,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
             projectId: '100',
             name: 'Area',
             columnType: 'dropdown',
-            dropListItems: 'Frontend, Backend',
+            dropListItems: ['Q1, 2026', 'Backend'],
           },
         }),
       );
@@ -370,7 +370,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
         { input: Record<string, unknown> },
       ];
       expect(variables.input.dropListItems).toEqual([
-        { name: 'Frontend', icon: 'default' },
+        { name: 'Q1, 2026', icon: 'default' },
         { name: 'Backend', icon: 'default' },
       ]);
     });
@@ -396,6 +396,56 @@ describe('MCP Server integration (real tools, mocked network)', () => {
       expect(result.isError).toBeFalsy();
       const [query] = mockQuery.mock.calls[1] as [string];
       expect(query).toContain(expectedMutation);
+    });
+
+    it('rejects drop-list options sent as one comma-separated string', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: 'Bug, regression',
+          },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it.each(['time', 'list'])(
+      'does not guess a column type for %p',
+      async (columnType) => {
+        const result = asResult(
+          await client.callTool({
+            name: 'create_custom_column',
+            arguments: { projectId: '100', name: 'Vague', columnType },
+          }),
+        );
+
+        expect(result.isError).toBe(true);
+        expect(mockQuery).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a JSON-string option with unknown keys instead of using it as a label', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: ['{"label":"Low","color":"red"}'],
+          },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('not a valid option');
+      expect(mockQuery).not.toHaveBeenCalled();
     });
 
     it('rejects malformed JSON lists instead of splitting them', async () => {

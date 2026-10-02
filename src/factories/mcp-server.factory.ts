@@ -103,13 +103,13 @@ function coerceEnum(
   return matchEnumValue(text, enumValues, aliases) ?? text;
 }
 
-function coerceArray(value: unknown, itemsAcceptString: boolean): unknown {
+function coerceArray(value: unknown, splitCommaLists: boolean): unknown {
   const parsed = parseJsonString(parseJsonString(value, '['), '{');
   if (Array.isArray(parsed) || parsed === undefined || parsed === null) {
     return parsed;
   }
   if (typeof parsed === 'string') {
-    if (!itemsAcceptString || looksLikeJson(parsed) || !parsed.trim()) {
+    if (!splitCommaLists || looksLikeJson(parsed) || !parsed.trim()) {
       return parsed;
     }
     return parsed
@@ -120,10 +120,8 @@ function coerceArray(value: unknown, itemsAcceptString: boolean): unknown {
   return [parsed];
 }
 
-function acceptsString(property: Record<string, unknown>): boolean {
-  if (property.type === 'string') return true;
-  const anyOf = property.anyOf as Array<Record<string, unknown>> | undefined;
-  return anyOf?.some((option) => option.type === 'string') ?? false;
+function isPlainStringList(items: Record<string, unknown>): boolean {
+  return items.type === 'string' && !items.enum;
 }
 
 /** Convert a JSON Schema property to a Zod schema (the SDK needs Zod to validate parameters). */
@@ -165,7 +163,7 @@ function buildZodSchema(property: Record<string, unknown>): z.ZodTypeAny {
     case 'array': {
       const items = property.items as Record<string, unknown> | undefined;
       return z.preprocess(
-        (value) => coerceArray(value, items ? acceptsString(items) : false),
+        (value) => coerceArray(value, items ? isPlainStringList(items) : false),
         items ? z.array(jsonSchemaPropertyToZod(items)) : z.array(z.unknown()),
       );
     }

@@ -280,7 +280,7 @@ Copy the `access_token` value and use it in your MCP client configuration.
 
 ## Available Tools (29 total)
 
-Tool arguments are parsed leniently, so less capable models succeed more often. Enum values match regardless of case, spaces, `_` or `-` (`"Time Spent"` → `timeSpent`). `"true"`/`"yes"` are accepted for booleans, numbers for IDs, numeric strings for numbers, and JSON-encoded or comma-separated strings for lists. Anything that can't be mapped unambiguously is rejected with the allowed values.
+Tool arguments are parsed leniently, so less capable models succeed more often. Enum values match regardless of case, spaces, `_` or `-` (`"Time Spent"` → `timeSpent`). `"true"`/`"yes"` are accepted for booleans, numbers for IDs, numeric strings for numbers, and JSON-encoded lists or comma-separated ID lists. Anything that can't be mapped unambiguously is rejected with the allowed values.
 
 ### Projects
 

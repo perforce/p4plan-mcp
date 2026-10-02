@@ -718,6 +718,21 @@ describe('TaskCustomFieldsTools', () => {
       });
     });
 
+    it.each([
+      '{"label":"Low","color":"red"}',
+      '{"name":"Low","icon":"purple"}',
+    ])('should reject a JSON-looking drop-list item %p', async (rawItem) => {
+      await expect(
+        callTool('create_custom_column', {
+          projectId: '100',
+          name: 'Area',
+          columnType: 'singleSelectionDropList',
+          dropListItems: [rawItem],
+        }),
+      ).rejects.toThrow('dropListItems[0] is not a valid option');
+      expect(mockGraphqlClient.query).not.toHaveBeenCalled();
+    });
+
     it('should reject duplicate drop-list item names', async () => {
       await expect(
         callTool('create_custom_column', {

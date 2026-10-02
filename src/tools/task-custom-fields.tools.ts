@@ -77,7 +77,6 @@ const COLUMN_TYPE_ALIASES: Record<string, string> = {
   dateWithTime: 'dateTime',
   dateAndTime: 'dateTime',
   timestamp: 'dateTime',
-  time: 'timeSpent',
   accumulatedTime: 'timeSpent',
   timeReporting: 'timeSpent',
   dropList: 'singleSelectionDropList',
@@ -85,7 +84,6 @@ const COLUMN_TYPE_ALIASES: Record<string, string> = {
   select: 'singleSelectionDropList',
   singleSelect: 'singleSelectionDropList',
   singleSelection: 'singleSelectionDropList',
-  list: 'singleSelectionDropList',
   multiDropList: 'multipleSelectionDropList',
   multiSelectionDropList: 'multipleSelectionDropList',
   multiSelect: 'multipleSelectionDropList',
@@ -191,6 +189,11 @@ function parseDropListItems(
   }
 
   const items = rawItems.map((rawItem: unknown, index) => {
+    if (typeof rawItem === 'string' && /^\s*[[{]/.test(rawItem)) {
+      throw new Error(
+        `create_custom_column: dropListItems[${index}] is not a valid option: ${rawItem}. Use a plain label or an object with name and optional icon, autoAssignToUsers, autoAssignToUserGroups (not label/color); icon must be a listed value, e.g. purple = magentaCircle`,
+      );
+    }
     const item = (
       typeof rawItem === 'string' ? { name: rawItem } : rawItem
     ) as Partial<DropListItemArgs> | null;
@@ -407,7 +410,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
             dropListItems: {
               type: 'array',
               description:
-                'Drop lists only (required): the options in order. Plain labels ["Low","High"] are enough; use objects only for icon or auto-assignment. Object keys are exactly name, icon, autoAssignToUsers, autoAssignToUserGroups (not label/color)',
+                'Drop lists only (required): an array of the options in order. Plain labels ["Low","High"] are enough (labels may contain commas; a single comma-separated string is rejected); use objects only for icon or auto-assignment. Object keys are exactly name, icon, autoAssignToUsers, autoAssignToUserGroups (not label/color)',
               items: {
                 anyOf: [
                   {

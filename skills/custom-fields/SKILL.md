@@ -19,7 +19,7 @@ Custom fields (custom columns) add project-specific data to tasks beyond the bui
 
 The create_custom_column description covers sections and types. Extra rules:
 - One section per call (list_projects IDs, never a name). "Everywhere" = 3 calls with identical name/type/unit/options so it stays one column.
-- Drop-list items: labels `["Low","High"]`, or `{name, icon}` objects (not label/color). Colours: `greenCircle`, `yellowCircle`, `redCircle`, `blueCircle`, `orangeCircle`, `magentaCircle`.
+- Drop-list items: an array of labels `["Low","High"]` (never one comma-separated string), or `{name, icon}` objects (not label/color). Colours: `greenCircle`, `yellowCircle`, `redCircle`, `blueCircle`, `orangeCircle`, `magentaCircle`.
 - Auto-assign (`autoAssignToUsers`/`autoAssignToUserGroups`) only works on singleSelectionDropList; tell the user multi-select can't.
 - `updateOn*` date flags need `updateOnlyFirstTime` (true = first time, false = every time).
 - `useForTimeReporting` replaces the project's time-reporting column (one for planning+backlog, one for QA): only set it when asked, and tell the user.
