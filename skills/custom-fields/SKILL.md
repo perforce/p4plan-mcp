@@ -27,29 +27,29 @@ The create_custom_column description covers sections and types. Extra rules:
 
 ## Tool Mapping
 
-| User Intent | Tool | Key Parameters |
-| --- | --- | --- |
-| List available custom columns | get_custom_columns | projectId, activeOnly |
-| Read task's custom field values | get_custom_fields | taskId, onlySet |
-| Set a custom field value | set_custom_field | taskId, customFieldId, value |
-| Add a column to a project | create_custom_column | projectId, name, columnType |
+| User Intent                     | Tool                 | Key Parameters               |
+|---------------------------------|----------------------|------------------------------|
+| List available custom columns   | get_custom_columns   | projectId, activeOnly        |
+| Read task's custom field values | get_custom_fields    | taskId, onlySet              |
+| Set a custom field value        | set_custom_field     | taskId, customFieldId, value |
+| Add a column to a project       | create_custom_column | projectId, name, columnType  |
 
 ## Value Formats by Type
 
-| Column Type | Value Format |
-| --- | --- |
-| Text | Any string |
-| Multiline Text | Sanitized HTML; plain text accepted (no tags = valid HTML). Use HTML for formatting or @mentions — see comment-html-format skill |
-| Number | Integer string, e.g. "5" |
-| Decimal Number | Numeric string, e.g. "5.5" |
-| Date | ISO date "YYYY-MM-DD" |
-| DateTime | ISO datetime "YYYY-MM-DDTHH:MM:SS" |
-| Time Spent | Hours as numeric string, e.g. "2.5" |
-| Drop List | Option ID from get_custom_columns |
+| Column Type            | Value Format                                     |
+|------------------------|--------------------------------------------------|
+| Text                   | Any string                                       |
+| Multiline Text         | Sanitized HTML; plain text accepted (no tags = valid HTML). Use HTML for formatting or @mentions — see comment-html-format skill |
+| Number                 | Integer string, e.g. "5"                         |
+| Decimal Number         | Numeric string, e.g. "5.5"                       |
+| Date                   | ISO date "YYYY-MM-DD"                            |
+| DateTime               | ISO datetime "YYYY-MM-DDTHH:MM:SS"               |
+| Time Spent             | Hours as numeric string, e.g. "2.5"              |
+| Drop List              | Option ID from get_custom_columns                |
 | Multi-select Drop List | Comma-separated option IDs, e.g. "id1, id2, id3" |
-| Hyperlink | URL string |
-| User | Comma-separated user IDs from list_project_users |
-| Function | Read-only — computed value |
+| Hyperlink              | URL string                                       |
+| User                   | Comma-separated user IDs from list_project_users |
+| Function               | Read-only — computed value                       |
 
 To clear a field, pass an empty string as the value.
 

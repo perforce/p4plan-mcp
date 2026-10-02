@@ -34,7 +34,7 @@ skills/
 | **custom-fields**      | custom fields, columns, create column, time spent column, metadata             |
 | **gantt-scheduling**   | Gantt, schedule, timeline, dependencies                                        |
 | **workflows**          | workflow, sign-off, approval, status transitions                               |
-| **pipeline**            | pipeline, pipeline task, step, breakdown, bug in a pipeline step               |
+| **pipeline**           | pipeline, pipeline task, step, breakdown, bug in a pipeline step               |
 | **comment-html-format** | comments, multiline fields, HTML formatting, allowed tags                      |
 | **mentions**            | @mentions, user references, notifications in comments                          |
 
