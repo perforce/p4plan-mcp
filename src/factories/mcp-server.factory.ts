@@ -7,6 +7,8 @@
  * integration tests so both wire the server the same way.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { LoggerService } from '@nestjs/common';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -14,7 +16,14 @@ import type { McpTool, ToolsService } from '../tools/tools.service';
 import type { SkillsTools } from '../tools/skills.tools';
 
 const SERVER_NAME = 'p4-plan-mcp';
-const SERVER_VERSION = '1.0.0';
+
+// Sourced from package.json so the version reported in the MCP initialize
+// handshake can never drift from the published release. The relative path
+// resolves to the package root from both src/factories (ts-jest) and
+// dist/factories (built output, Docker image, npm install).
+const { version: SERVER_VERSION } = JSON.parse(
+  readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8'),
+) as { version: string };
 
 /** Convert a JSON Schema property to a Zod schema (the SDK needs Zod to validate parameters). */
 export function jsonSchemaPropertyToZod(

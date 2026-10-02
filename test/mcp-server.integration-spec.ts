@@ -18,6 +18,8 @@
  * with no live P4 Plan server and no AI model.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -28,6 +30,12 @@ import { ToolsService } from '../src/tools/tools.service';
 import { SkillsTools } from '../src/tools/skills.tools';
 import { GraphQLClientService } from '../src/graphql-client/graphql-client.service';
 import { createMcpServer } from '../src/factories/mcp-server.factory';
+
+// Read independently of the factory so the assertion below proves the
+// handshake reports the real package version, not a literal copied twice.
+const { version: PACKAGE_VERSION } = JSON.parse(
+  readFileSync(join(__dirname, '..', 'package.json'), 'utf8'),
+) as { version: string };
 
 jest.setTimeout(20_000);
 
@@ -125,7 +133,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
     it('completes the initialize handshake with the real server identity', () => {
       const version = client.getServerVersion();
       expect(version?.name).toBe('p4-plan-mcp');
-      expect(version?.version).toBe('1.0.0');
+      expect(version?.version).toBe(PACKAGE_VERSION);
     });
 
     it('reports tool capabilities after connecting', () => {
