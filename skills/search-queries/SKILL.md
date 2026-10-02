@@ -165,7 +165,7 @@ the user means, and say which section you searched when you report the result.
 Use the workflow/pipeline name exactly as `get_workflows` returns it. This matches both status
 workflows and pipelines — a pipeline match returns the items *carrying* the pipeline, not the
 pipeline tasks it spawned. See the [pipeline](../pipeline/SKILL.md) skill for how to list the
-stages themselves.
+steps themselves.
 
 ## Text Search Columns
 

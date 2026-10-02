@@ -188,6 +188,24 @@ describe('GraphQL Queries Validation', () => {
         'workflows',
       );
     });
+
+    it.each(
+      Object.entries(taskCustomFieldsQueries.CREATE_CUSTOM_COLUMN_MUTATIONS),
+    )(
+      'CREATE_CUSTOM_COLUMN_MUTATIONS.%s should be valid GraphQL',
+      (_, mutation) => {
+        expect(isValidGraphQL(mutation)).toBe(true);
+        expect(mutation).toMatch(
+          /create(\w+)CustomColumn\(\s*projectID: \$projectID\s+create\1CustomColumnInput: \$input/,
+        );
+      },
+    );
+
+    it('CREATE_CUSTOM_COLUMN_MUTATIONS should cover every creatable column type', () => {
+      expect(
+        Object.keys(taskCustomFieldsQueries.CREATE_CUSTOM_COLUMN_MUTATIONS),
+      ).toHaveLength(11);
+    });
   });
 
   describe('task-actions.queries', () => {
