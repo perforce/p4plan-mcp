@@ -369,33 +369,36 @@ export class ProjectsTools {
         return undefined;
       });
 
-    const copiedMemberIds =
-      sourceId && args.copyUsers === true
-        ? await this.getMemberIds(project.id, authToken)
-        : undefined;
+    const initialMemberIds =
+      (await this.getMemberIds(project.id, authToken)) ?? new Set<string>();
+    const copiedUsers =
+      sourceId && args.copyUsers === true ? initialMemberIds.size : undefined;
 
-    const groups = team.members.filter(
-      (member) =>
-        member.kind === 'group' &&
-        !(
-          copiedMemberIds &&
-          member.userIds?.length &&
-          member.userIds.every((id) => copiedMemberIds.has(id))
-        ),
-    );
+    const groups = team.members.filter((member) => member.kind === 'group');
+    const notLinked: string[] = [];
     for (const group of groups) {
-      await attempt(`add group ${group.name}`, () =>
-        this.graphqlClient.query(
+      await this.graphqlClient
+        .query(
           ADD_PROJECT_USER_GROUP_MUTATION,
           { projectID: project.id, userGroupID: group.id },
           authToken,
-        ),
-      );
+        )
+        .catch((error: unknown) => {
+          const alreadyMembers =
+            !!group.userIds?.length &&
+            group.userIds.every((id) => initialMemberIds.has(id));
+          if (alreadyMembers) notLinked.push(group.name);
+          else
+            failed.push({
+              step: `add group ${group.name}`,
+              error: errorMessage(error),
+            });
+        });
     }
     const existingMemberIds =
-      (groups.length > 0
-        ? await this.getMemberIds(project.id, authToken)
-        : copiedMemberIds) ?? new Set<string>();
+      groups.length > 0
+        ? ((await this.getMemberIds(project.id, authToken)) ?? initialMemberIds)
+        : initialMemberIds;
 
     const managers = uniqueBy(
       [...(addMe ? [me] : []), ...team.managers],
@@ -451,8 +454,17 @@ export class ProjectsTools {
                 : {}),
             },
             ...(sourceId ? { copiedFrom: sourceId } : {}),
-            ...(copiedMemberIds ? { copiedUsers: copiedMemberIds.size } : {}),
-            members: team.members.map((member) => member.name),
+            ...(copiedUsers !== undefined ? { copiedUsers } : {}),
+            members: team.members
+              .filter((member) => !notLinked.includes(member.name))
+              .map((member) => member.name),
+            ...(notLinked.length > 0
+              ? {
+                  groupsNotLinked: notLinked,
+                  groupsNote:
+                    'All their people are already members, and the API only links a group that adds someone new, so people who join these groups later will not get access automatically.',
+                }
+              : {}),
             managers: managers.map((manager) => manager.name),
             ...(failed.length > 0 ? { failed } : {}),
             ...(notMember

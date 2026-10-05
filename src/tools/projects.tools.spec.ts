@@ -492,7 +492,7 @@ describe('ProjectsTools', () => {
       });
     });
 
-    it('skips adding a group whose people the copy already brought along', async () => {
+    it('reports a group the API will not link because its people were copied already', async () => {
       respond({
         GetUsersAndGroups: directory,
         AllProjects: { projects: [projectA] },
@@ -501,6 +501,9 @@ describe('ProjectsTools', () => {
         GetProjectMemberIds: {
           project: { users: [{ user: { id: '1' } }, { user: { id: '13' } }] },
         },
+        AddProjectUserGroup: new Error(
+          'GraphQL Error: Failed to add user group to project',
+        ),
         UpdateProjectUserAccessRights: accessRights,
       });
 
@@ -511,10 +514,55 @@ describe('ProjectsTools', () => {
         members: ['Developers'],
       });
 
-      expect(calls('AddProjectUserGroup')).toEqual([]);
+      expect(calls('AddProjectUserGroup')).toEqual([
+        { projectID: '500', userGroupID: '4' },
+      ]);
+      const parsed = parseToolResult<Record<string, unknown>>(result);
+      expect(parsed).toMatchObject({
+        members: [],
+        groupsNotLinked: ['Developers'],
+      });
+      expect(parsed.groupsNote).toContain('will not get access automatically');
+      expect(parsed).not.toHaveProperty('failed');
+    });
+
+    it('links a requested group even when some of its people were copied', async () => {
+      respond({
+        GetUsersAndGroups: directory,
+        AllProjects: { projects: [projectA] },
+        CloneProject: { cloneProject: created },
+        GetProjectSections: sections,
+        GetProjectMemberIds: { project: { users: [{ user: { id: '1' } }] } },
+        AddProjectUserGroup: { addProjectUserGroup: { id: '500' } },
+        UpdateProjectUserAccessRights: accessRights,
+      });
+
+      const result = await callTool('create_project', {
+        name: 'Apollo',
+        copyFromProjectId: '9',
+        copyUsers: true,
+        members: ['Developers'],
+      });
+
+      expect(calls('AddProjectUserGroup')).toHaveLength(1);
       expect(parseToolResult(result)).toMatchObject({
         members: ['Developers'],
       });
+      expect(parseToolResult(result)).not.toHaveProperty('groupsNotLinked');
+    });
+
+    it('does not add the caller again when the server already made them a member', async () => {
+      respond({
+        CreateProject: { createProject: created },
+        GetProjectSections: sections,
+        GetProjectMemberIds: { project: { users: [{ user: { id: '1' } }] } },
+        UpdateProjectUserAccessRights: accessRights,
+      });
+
+      const result = await callTool('create_project', { name: 'Apollo' });
+
+      expect(calls('AddProjectUser')).toEqual([]);
+      expect(calls('UpdateProjectUserAccessRights')).toHaveLength(1);
       expect(parseToolResult(result)).not.toHaveProperty('failed');
     });
 
