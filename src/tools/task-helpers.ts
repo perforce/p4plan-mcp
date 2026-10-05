@@ -24,6 +24,81 @@ export interface ToolRegistration {
   ) => Promise<McpToolResult> | McpToolResult;
 }
 
+export interface NamedId {
+  id: string;
+  name: string;
+}
+
+export function isMeaningful(value: unknown): boolean {
+  return (
+    value !== undefined &&
+    value !== null &&
+    value !== false &&
+    value !== '' &&
+    !(Array.isArray(value) && value.length === 0)
+  );
+}
+
+export function findNamedMatches<T extends NamedId>(
+  value: string,
+  candidates: T[],
+): T[] {
+  const trimmed = String(value).trim();
+  const idMatch = candidates.find((candidate) => candidate.id === trimmed);
+  if (idMatch) return [idMatch];
+  return candidates.filter(
+    (candidate) => candidate.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+}
+
+export interface ProjectSections {
+  id: string;
+  name: string;
+  backlog: { id: string };
+  qa: { id: string };
+}
+
+export function findProjectByName(
+  projects: Array<ProjectSections | null>,
+  name: string,
+): ProjectSections | undefined {
+  const key = name.trim().toLowerCase();
+  return projects.find(
+    (project): project is ProjectSections =>
+      project !== null && project.name.toLowerCase() === key,
+  );
+}
+
+export function describeCandidates(candidates: NamedId[]): string {
+  const shown = candidates
+    .slice(0, 20)
+    .map((candidate) => `${candidate.name} (${candidate.id})`)
+    .join(', ');
+  const truncated =
+    candidates.length > 20 ? ` (first 20 of ${candidates.length})` : '';
+  return `Available${truncated}: ${shown || 'none'}`;
+}
+
+export function resolveNamedId(
+  toolName: string,
+  value: string,
+  candidates: NamedId[],
+  kind: string,
+  listTool?: string,
+): string {
+  const trimmed = String(value).trim();
+  const matches = findNamedMatches(trimmed, candidates);
+  if (matches.length > 1) {
+    throw new Error(
+      `${toolName}: ${kind} name "${trimmed}" is ambiguous: ${matches.map((candidate) => `${candidate.name} (${candidate.id})`).join(', ')}. Pass the ID instead`,
+    );
+  }
+  if (matches.length === 1) return matches[0].id;
+  throw new Error(
+    `${toolName}: unknown ${kind} "${trimmed}"${listTool ? ` — see ${listTool}` : ''}. ${describeCandidates(candidates)}`,
+  );
+}
+
 /**
  * Validate that all required fields are present and non-empty in tool arguments.
  * Throws a clear error message if any are missing.

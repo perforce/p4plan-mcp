@@ -25,7 +25,7 @@ skills/
 
 | Skill                  | Trigger Phrases                                                                |
 |------------------------|--------------------------------------------------------------------------------|
-| **project-navigation** | projects, navigation, structure, getting started, search, find, filter, report |
+| **project-navigation** | projects, create project, navigation, structure, search, find, filter, report  |
 | **search-queries**     | advanced search, find query, filter by status/assignee/severity/dates/type     |
 | **task-management**    | tasks, status, my work, To Do List, assign, comments, attachments, download    |
 | **planning**           | sprint, planning, capacity, velocity, burndown, release, milestone, version    |

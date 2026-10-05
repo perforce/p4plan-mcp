@@ -8,6 +8,11 @@ import {
   TaskToolsBase,
   ToolRegistration,
   validateRequired,
+  isMeaningful,
+  resolveNamedId,
+  NamedId,
+  ProjectSections,
+  findProjectByName,
 } from './task-helpers';
 import {
   GET_WORKFLOWS_QUERY,
@@ -29,6 +34,13 @@ const CUSTOM_COLUMN_TYPES = Object.keys(CREATE_CUSTOM_COLUMN_MUTATIONS);
 const DROP_LIST_COLUMN_TYPES = [
   'singleSelectionDropList',
   'multipleSelectionDropList',
+];
+
+const UNCLEARABLE_COLUMN_TYPES = [
+  'NumberCustomColumn',
+  'DecimalNumberCustomColumn',
+  'DateCustomColumn',
+  'DateTimeCustomColumn',
 ];
 
 const DATE_UPDATE_FLAGS = [
@@ -156,26 +168,11 @@ const DROP_LIST_ITEM_ICONS = [
   'stop',
 ];
 
-interface NamedId {
-  id: string;
-  name: string;
-}
-
 interface DropListItemArgs {
   name: string;
   icon?: string;
   autoAssignToUsers?: string[];
   autoAssignToUserGroups?: string[];
-}
-
-function isMeaningful(value: unknown): boolean {
-  return (
-    value !== undefined &&
-    value !== null &&
-    value !== false &&
-    value !== '' &&
-    !(Array.isArray(value) && value.length === 0)
-  );
 }
 
 function isJsonObjectOrArray(value: string): boolean {
@@ -227,37 +224,6 @@ function parseDropListItems(
     );
   }
   return items;
-}
-
-function resolveNamedId(
-  value: string,
-  candidates: NamedId[],
-  kind: string,
-  listTool?: string,
-): string {
-  const trimmed = String(value).trim();
-  const idMatch = candidates.find((candidate) => candidate.id === trimmed);
-  if (idMatch) return idMatch.id;
-
-  const nameMatches = candidates.filter(
-    (candidate) => candidate.name.toLowerCase() === trimmed.toLowerCase(),
-  );
-  if (nameMatches.length > 1) {
-    throw new Error(
-      `create_custom_column: ${kind} name "${trimmed}" is ambiguous: ${nameMatches.map((candidate) => `${candidate.name} (${candidate.id})`).join(', ')}. Pass the ID instead`,
-    );
-  }
-  if (nameMatches.length === 1) return nameMatches[0].id;
-
-  const shown = candidates
-    .slice(0, 20)
-    .map((candidate) => `${candidate.name} (${candidate.id})`)
-    .join(', ');
-  const truncated =
-    candidates.length > 20 ? ` (first 20 of ${candidates.length})` : '';
-  throw new Error(
-    `create_custom_column: unknown ${kind} "${trimmed}"${listTool ? ` — see ${listTool}` : ''}. Available${truncated}: ${shown || 'none'}`,
-  );
 }
 
 function explainCreateError(
@@ -492,7 +458,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
       definition: {
         name: 'set_custom_field',
         description:
-          'Set a custom field value on a task. Get column IDs from get_custom_columns first. For drop lists, pass the option ID (not the display label). Pass empty string to clear a value. For Multiline Text columns, the value is sanitized HTML — call read_skill with skillName="comment-html-format" before composing it.',
+          'Set a custom field value on a task. Get column IDs from get_custom_columns first. For drop lists, pass the option ID (not the display label). Time Spent values are hours to ADD to the current total (negative subtracts). Pass "" to clear text, link, drop-list, user and time spent fields; numbers and dates cannot be cleared. For Multiline Text columns, the value is sanitized HTML — call read_skill with skillName="comment-html-format" before composing it.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -508,7 +474,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
             value: {
               type: 'string',
               description:
-                'The value to set. For numbers use numeric string, for dates use ISO format (YYYY-MM-DD), for drop lists use the option ID, for user fields use comma-separated user IDs. For Multiline Text columns, use sanitized HTML — see the comment-html-format skill.',
+                'The value to set. For numbers use numeric string, for time spent the hours to add (negative subtracts), for dates use ISO format (YYYY-MM-DD), for drop lists use the option ID, for user fields use comma-separated user IDs. For Multiline Text columns, use sanitized HTML — see the comment-html-format skill.',
             },
           },
           required: ['taskId', 'customFieldId', 'value'],
@@ -719,16 +685,9 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
     authToken: string,
   ): Promise<never> {
     const { userProjects } = await this.graphqlClient.query<{
-      userProjects: Array<{
-        id: string;
-        name: string;
-        backlog: { id: string };
-        qa: { id: string };
-      }>;
+      userProjects: ProjectSections[];
     }>(LIST_PROJECTS_QUERY, {}, authToken);
-    const project = userProjects.find(
-      (candidate) => candidate.name.toLowerCase() === projectId.toLowerCase(),
-    );
+    const project = findProjectByName(userProjects, projectId);
     if (project) {
       throw new Error(
         `create_custom_column: 'projectId' must be an ID, not a name. Project "${project.name}" has planning ID ${project.id}, backlogID ${project.backlog.id} and qaID ${project.qa.id} — call again with the section's ID`,
@@ -759,12 +718,19 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
       };
       if (item.autoAssignToUsers?.length) {
         dropListItem.autoAssignToUsers = item.autoAssignToUsers.map((user) =>
-          resolveNamedId(user, users, 'user', 'list_project_users'),
+          resolveNamedId(
+            'create_custom_column',
+            user,
+            users,
+            'user',
+            'list_project_users',
+          ),
         );
       }
       if (item.autoAssignToUserGroups?.length) {
         dropListItem.autoAssignToUserGroups = item.autoAssignToUserGroups.map(
-          (group) => resolveNamedId(group, groups, 'user group'),
+          (group) =>
+            resolveNamedId('create_custom_column', group, groups, 'user group'),
         );
       }
       return dropListItem;
@@ -832,14 +798,16 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
     args: Record<string, unknown>,
     authToken: string,
   ): Promise<McpToolResult> {
-    validateRequired(
-      args,
-      ['taskId', 'customFieldId', 'value'],
-      'set_custom_field',
-    );
+    validateRequired(args, ['taskId', 'customFieldId'], 'set_custom_field');
+    if (args.value === undefined || args.value === null) {
+      throw new Error(
+        'set_custom_field: \'value\' is required (pass "" to clear the field)',
+      );
+    }
     const taskId = args.taskId as string;
     const customFieldId = args.customFieldId as string;
     const value = args.value as string;
+    const clearing = value.trim() === '';
 
     // First, get the column type to determine which mutation to use
     // We need to get the task's project first, then query the column
@@ -869,29 +837,50 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
       throw new Error(`Unsupported custom field type: ${column.__typename}`);
     }
 
+    if (clearing && UNCLEARABLE_COLUMN_TYPES.includes(column.__typename)) {
+      throw new Error(
+        `set_custom_field: ${column.__typename.replace('CustomColumn', '')} fields cannot be cleared through the API; set a value instead`,
+      );
+    }
+
     // Build variables with type-appropriate value coercion
     let variables: Record<string, unknown>;
 
     switch (column.__typename) {
-      case 'NumberCustomColumn':
-        variables = {
-          taskID: taskId,
-          customFieldID: customFieldId,
-          value: parseInt(value, 10),
-        };
-        break;
-
-      case 'DecimalNumberCustomColumn':
       case 'TimeSpentCustomColumn':
+        if (clearing) {
+          variables = {
+            taskID: taskId,
+            customFieldID: customFieldId,
+            value: -(await this.getTimeSpent(taskId, customFieldId, authToken)),
+          };
+          break;
+        }
+      // falls through
+      case 'NumberCustomColumn':
+      case 'DecimalNumberCustomColumn': {
+        const number =
+          column.__typename === 'NumberCustomColumn'
+            ? parseInt(value, 10)
+            : parseFloat(value);
+        if (Number.isNaN(number)) {
+          throw new Error(
+            `set_custom_field: "${value}" is not a number, which ${column.__typename.replace('CustomColumn', '')} fields need`,
+          );
+        }
         variables = {
           taskID: taskId,
           customFieldID: customFieldId,
-          value: parseFloat(value),
+          value: number,
         };
         break;
+      }
 
       case 'MultipleSelectionDropListCustomColumn': {
-        const ids = value.split(',').map((id) => id.trim());
+        const ids = value
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0);
         variables = {
           taskID: taskId,
           customFieldID: customFieldId,
@@ -916,7 +905,11 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
       default:
         // String-like types: Text, MultilineText, Hyperlink, Date, DateTime,
         // SingleSelectionDropList — all pass value as-is
-        variables = { taskID: taskId, customFieldID: customFieldId, value };
+        variables = {
+          taskID: taskId,
+          customFieldID: customFieldId,
+          value: clearing ? '' : value,
+        };
         break;
     }
 
@@ -932,10 +925,25 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
             customFieldId,
             columnType: column.__typename,
             value,
+            ...(clearing ? { cleared: true } : {}),
           }),
         },
       ],
     };
+  }
+
+  private async getTimeSpent(
+    taskId: string,
+    customFieldId: string,
+    authToken: string,
+  ): Promise<number> {
+    const { customFields } = await this.graphqlClient.query<{
+      customFields: Array<{ id: string; timeSpentValue?: number } | null>;
+    }>(GET_CUSTOM_FIELDS_QUERY, { id: taskId }, authToken);
+    const field = customFields.find(
+      (candidate) => candidate?.id === customFieldId,
+    );
+    return field?.timeSpentValue ?? 0;
   }
 
   private async getWorkflows(

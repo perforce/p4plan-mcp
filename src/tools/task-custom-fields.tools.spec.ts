@@ -339,6 +339,134 @@ describe('TaskCustomFieldsTools', () => {
       ).rejects.toThrow('Custom field with ID nonexistent not found');
     });
 
+    function mockColumn(typeName: string) {
+      mockGraphqlClient.query
+        .mockResolvedValueOnce({ item: { id: 't-1', projectID: 'p-1' } })
+        .mockResolvedValueOnce({
+          columns: [{ id: 'col-1', __typename: typeName }],
+        })
+        .mockResolvedValueOnce({ set: { id: 't-1' } });
+    }
+
+    it.each([
+      ['TextCustomColumn', { value: '' }],
+      ['HyperlinkCustomColumn', { value: '' }],
+      ['SingleSelectionDropListCustomColumn', { value: '' }],
+      ['MultipleSelectionDropListCustomColumn', { value: [] }],
+      ['UserCustomColumn', { usersAndGroups: { users: [], groups: [] } }],
+    ])(
+      'should clear a %s field with an empty value',
+      async (typeName, sent) => {
+        mockColumn(typeName);
+
+        const result = await callTool('set_custom_field', {
+          taskId: 't-1',
+          customFieldId: 'col-1',
+          value: '',
+        });
+
+        expect(getLastQueryCall(mockGraphqlClient.query)[1]).toEqual({
+          taskID: 't-1',
+          customFieldID: 'col-1',
+          ...sent,
+        });
+        expect(parseToolResult(result)).toMatchObject({ cleared: true });
+      },
+    );
+
+    it.each([
+      ['NumberCustomColumn', 'Number'],
+      ['DecimalNumberCustomColumn', 'DecimalNumber'],
+      ['DateCustomColumn', 'Date'],
+      ['DateTimeCustomColumn', 'DateTime'],
+    ])(
+      'should explain that a %s field cannot be cleared',
+      async (typeName, label) => {
+        mockColumn(typeName);
+
+        await expect(
+          callTool('set_custom_field', {
+            taskId: 't-1',
+            customFieldId: 'col-1',
+            value: ' ',
+          }),
+        ).rejects.toThrow(
+          `set_custom_field: ${label} fields cannot be cleared through the API; set a value instead`,
+        );
+        expect(mockGraphqlClient.query).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('should clear a time spent field by subtracting its current total', async () => {
+      mockGraphqlClient.query
+        .mockResolvedValueOnce({ item: { id: 't-1', projectID: 'p-1' } })
+        .mockResolvedValueOnce({
+          columns: [{ id: 'col-1', __typename: 'TimeSpentCustomColumn' }],
+        })
+        .mockResolvedValueOnce({
+          customFields: [
+            { id: 'other', timeSpentValue: 9 },
+            { id: 'col-1', timeSpentValue: 2.5 },
+          ],
+        })
+        .mockResolvedValueOnce({ set: { id: 't-1' } });
+
+      const result = await callTool('set_custom_field', {
+        taskId: 't-1',
+        customFieldId: 'col-1',
+        value: '',
+      });
+
+      expect(getLastQueryCall(mockGraphqlClient.query)[1]).toEqual({
+        taskID: 't-1',
+        customFieldID: 'col-1',
+        value: -2.5,
+      });
+      expect(parseToolResult(result)).toMatchObject({ cleared: true });
+    });
+
+    it('should pass time spent hours through to be added', async () => {
+      mockColumn('TimeSpentCustomColumn');
+
+      await callTool('set_custom_field', {
+        taskId: 't-1',
+        customFieldId: 'col-1',
+        value: '-0.5',
+      });
+
+      expect(getLastQueryCall(mockGraphqlClient.query)[1]).toMatchObject({
+        value: -0.5,
+      });
+    });
+
+    it('should reject a value that is not a number for number fields', async () => {
+      mockColumn('NumberCustomColumn');
+
+      await expect(
+        callTool('set_custom_field', {
+          taskId: 't-1',
+          customFieldId: 'col-1',
+          value: 'five',
+        }),
+      ).rejects.toThrow(
+        'set_custom_field: "five" is not a number, which Number fields need',
+      );
+    });
+
+    it('should ignore empty entries in a multiple selection value', async () => {
+      mockColumn('MultipleSelectionDropListCustomColumn');
+
+      await callTool('set_custom_field', {
+        taskId: 't-1',
+        customFieldId: 'col-1',
+        value: '1, ,3,',
+      });
+
+      expect(getLastQueryCall(mockGraphqlClient.query)[1]).toMatchObject({
+        value: ['1', '3'],
+      });
+    });
+
     it('should throw when required fields are missing', async () => {
       await expect(
         callTool('set_custom_field', { customFieldId: 'c', value: 'v' }),
