@@ -375,7 +375,7 @@ export class ProjectsTools {
       sourceId && args.copyUsers === true ? initialMemberIds.size : undefined;
 
     const groups = team.members.filter((member) => member.kind === 'group');
-    const notLinked: string[] = [];
+    const notLinked: Member[] = [];
     for (const group of groups) {
       await this.graphqlClient
         .query(
@@ -387,7 +387,7 @@ export class ProjectsTools {
           const alreadyMembers =
             !!group.userIds?.length &&
             group.userIds.every((id) => initialMemberIds.has(id));
-          if (alreadyMembers) notLinked.push(group.name);
+          if (alreadyMembers) notLinked.push(group);
           else
             failed.push({
               step: `add group ${group.name}`,
@@ -456,11 +456,11 @@ export class ProjectsTools {
             ...(sourceId ? { copiedFrom: sourceId } : {}),
             ...(copiedUsers !== undefined ? { copiedUsers } : {}),
             members: team.members
-              .filter((member) => !notLinked.includes(member.name))
+              .filter((member) => !notLinked.includes(member))
               .map((member) => member.name),
             ...(notLinked.length > 0
               ? {
-                  groupsNotLinked: notLinked,
+                  groupsNotLinked: notLinked.map((group) => group.name),
                   groupsNote:
                     'All their people are already members, and the API only links a group that adds someone new, so people who join these groups later will not get access automatically.',
                 }

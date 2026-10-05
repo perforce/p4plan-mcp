@@ -526,6 +526,50 @@ describe('ProjectsTools', () => {
       expect(parsed).not.toHaveProperty('failed');
     });
 
+    it('keeps a user who shares a name with a group that was not linked', async () => {
+      respond({
+        GetUsersAndGroups: {
+          ...directory,
+          users: [
+            ...directory.users,
+            {
+              __typename: 'NormalUser',
+              id: '50',
+              name: 'Developers',
+              isDeleted: false,
+              isLocked: false,
+            },
+          ],
+        },
+        AllProjects: { projects: [projectA] },
+        CloneProject: { cloneProject: created },
+        GetProjectSections: sections,
+        GetProjectMemberIds: {
+          project: { users: [{ user: { id: '1' } }, { user: { id: '13' } }] },
+        },
+        AddProjectUserGroup: new Error(
+          'GraphQL Error: Failed to add user group to project',
+        ),
+        AddProjectUser: { addProjectUser: { id: '500' } },
+        UpdateProjectUserAccessRights: accessRights,
+      });
+
+      const result = await callTool('create_project', {
+        name: 'Apollo',
+        copyFromProjectId: '9',
+        copyUsers: true,
+        members: ['50', '4'],
+      });
+
+      expect(parseToolResult(result)).toMatchObject({
+        members: ['Developers'],
+        groupsNotLinked: ['Developers'],
+      });
+      expect(calls('AddProjectUser')).toEqual([
+        { projectID: '500', userID: '50' },
+      ]);
+    });
+
     it('links a requested group even when some of its people were copied', async () => {
       respond({
         GetUsersAndGroups: directory,
