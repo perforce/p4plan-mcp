@@ -8,7 +8,7 @@ description: Guide using status workflows in P4 Plan for task sign-off, testing,
 ## Key Concepts
 
 - **Workflow** (StatusWorkflow): Defines a state machine for task status progression (e.g., Draft -> Review -> Approved). Does not create new tasks.
-- **Pipeline** (PipelineWorkflow): A template of stages that materialises real child items under the item it is set on, once that item is in the Planning section. `get_workflows` returns a pipeline's name only -- no stages, no task types. Read the [pipeline](../pipeline/SKILL.md) skill before doing anything with pipelines.
+- **Pipeline** (PipelineWorkflow): A template of steps that materialises real child items under the item it is set on, once that item is in the Planning section. `get_workflows` returns a pipeline's name only -- no steps, no task types. Read the [pipeline](../pipeline/SKILL.md) skill before doing anything with pipelines.
 - **Workflow status** vs **item status**: Item status is the basic four (notDone, inProgress, completed, blocked). Workflow status is a custom set of states defined by the workflow. Some workflows hide item status.
 - To change workflow status, get the target status ID from get_workflows, then pass it as workflowStatusId to update_item.
 
@@ -28,6 +28,6 @@ description: Guide using status workflows in P4 Plan for task sign-off, testing,
 
 ## Related Skills
 
-- [Pipeline](../pipeline/SKILL.md) -- pipelines, pipeline tasks, breakdown, defects in a stage
+- [Pipeline](../pipeline/SKILL.md) -- pipelines, pipeline tasks, breakdown, defects in a step
 - [Task Management](../task-management/SKILL.md) -- basic task status updates
-- [Planning](../planning/SKILL.md) -- committing items, which is what brings pipeline stages into existence
+- [Planning](../planning/SKILL.md) -- committing items, which is what brings pipeline steps into existence

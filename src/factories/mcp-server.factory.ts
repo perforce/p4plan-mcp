@@ -25,35 +25,153 @@ const { version: SERVER_VERSION } = JSON.parse(
   readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8'),
 ) as { version: string };
 
+function normalizeEnumKey(value: string): string {
+  return value.toLowerCase().replace(/[\s_-]+/g, '');
+}
+
+function matchEnumValue(
+  value: string,
+  enumValues: string[],
+  aliases: Record<string, string> = {},
+): string | undefined {
+  if (enumValues.includes(value)) return value;
+
+  const key = normalizeEnumKey(value.trim());
+  const matches = enumValues.filter(
+    (enumValue) => normalizeEnumKey(enumValue) === key,
+  );
+  if (matches.length === 1) return matches[0];
+
+  return Object.entries(aliases).find(
+    ([alias]) => normalizeEnumKey(alias) === key,
+  )?.[1];
+}
+
+function looksLikeJson(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.startsWith('[') || trimmed.startsWith('{');
+}
+
+function parseJsonString(value: unknown, opening: '[' | '{'): unknown {
+  if (typeof value !== 'string' || !value.trim().startsWith(opening)) {
+    return value;
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function coerceString(value: unknown): unknown {
+  return typeof value === 'number' || typeof value === 'boolean'
+    ? String(value)
+    : value;
+}
+
+function coerceNumber(value: unknown): unknown {
+  if (typeof value !== 'string' || value.trim() === '') return value;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : value;
+}
+
+const BOOLEAN_STRINGS: Record<string, boolean> = {
+  true: true,
+  false: false,
+  yes: true,
+  no: false,
+  '1': true,
+  '0': false,
+};
+
+function coerceBoolean(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const key = value.trim().toLowerCase();
+    return Object.hasOwn(BOOLEAN_STRINGS, key) ? BOOLEAN_STRINGS[key] : value;
+  }
+  if (value === 1 || value === 0) return value === 1;
+  return value;
+}
+
+function coerceEnum(
+  value: unknown,
+  enumValues: string[],
+  aliases?: Record<string, string>,
+): unknown {
+  const text = coerceString(value);
+  if (typeof text !== 'string') return text;
+  return matchEnumValue(text, enumValues, aliases) ?? text;
+}
+
+function coerceArray(value: unknown, splitCommaLists: boolean): unknown {
+  const parsed = parseJsonString(parseJsonString(value, '['), '{');
+  if (Array.isArray(parsed) || parsed === undefined || parsed === null) {
+    return parsed;
+  }
+  if (typeof parsed === 'string') {
+    if (!splitCommaLists || looksLikeJson(parsed) || !parsed.trim()) {
+      return parsed;
+    }
+    return parsed
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+  return [parsed];
+}
+
+function isPlainStringList(items: Record<string, unknown>): boolean {
+  return items.type === 'string' && !items.enum;
+}
+
 /** Convert a JSON Schema property to a Zod schema (the SDK needs Zod to validate parameters). */
 export function jsonSchemaPropertyToZod(
   property: Record<string, unknown>,
 ): z.ZodTypeAny {
+  const schema = buildZodSchema(property);
+  const description = property.description as string | undefined;
+  return description ? schema.describe(description) : schema;
+}
+
+function buildZodSchema(property: Record<string, unknown>): z.ZodTypeAny {
   const type = property.type as string;
   const enumValues = property.enum as string[] | undefined;
+  const anyOf = property.anyOf as Array<Record<string, unknown>> | undefined;
 
   if (enumValues && type === 'string') {
-    return z.enum(enumValues as [string, ...string[]]);
+    const aliases = property.enumAliases as Record<string, string> | undefined;
+    return z.preprocess(
+      (value) => coerceEnum(value, enumValues, aliases),
+      z.enum(enumValues as [string, ...string[]]),
+    );
+  }
+
+  if (anyOf && anyOf.length > 0) {
+    const options = anyOf.map((option) => jsonSchemaPropertyToZod(option));
+    return options.length === 1
+      ? options[0]
+      : z.union(options as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
   }
 
   switch (type) {
     case 'string':
-      return z.string();
+      return z.preprocess(coerceString, z.string());
     case 'number':
-      return z.number();
+      return z.preprocess(coerceNumber, z.number());
     case 'boolean':
-      return z.boolean();
+      return z.preprocess(coerceBoolean, z.boolean());
     case 'array': {
       const items = property.items as Record<string, unknown> | undefined;
-      if (items) {
-        return z.array(jsonSchemaPropertyToZod(items));
-      }
-      return z.array(z.unknown());
+      return z.preprocess(
+        (value) => coerceArray(value, items ? isPlainStringList(items) : false),
+        items ? z.array(jsonSchemaPropertyToZod(items)) : z.array(z.unknown()),
+      );
     }
     case 'object': {
       const properties = property.properties as
         | Record<string, Record<string, unknown>>
         | undefined;
+      const toObject = (value: unknown) => parseJsonString(value, '{');
       if (properties) {
         const shape: Record<string, z.ZodTypeAny> = {};
         const required = (property.required as string[]) || [];
@@ -63,9 +181,9 @@ export function jsonSchemaPropertyToZod(
             ? fieldSchema
             : fieldSchema.optional();
         }
-        return z.object(shape);
+        return z.preprocess(toObject, z.object(shape));
       }
-      return z.record(z.string(), z.unknown());
+      return z.preprocess(toObject, z.record(z.string(), z.unknown()));
     }
     default:
       return z.unknown();

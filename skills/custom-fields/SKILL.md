@@ -1,6 +1,6 @@
 ---
 name: p4-plan-custom-fields
-description: Guide custom field management, configuration, and usage in P4 Plan. Use when user mentions custom fields, custom columns, metadata, tags, categories, or project-specific data.
+description: Guide custom field management, configuration, and usage in P4 Plan. Use when user mentions custom fields, custom columns, creating columns (e.g. Time Spent), metadata, tags, categories, or project-specific data.
 ---
 
 # Custom Fields in P4 Plan
@@ -11,17 +11,28 @@ Custom fields (custom columns) add project-specific data to tasks beyond the bui
 
 - Each project defines its own set of custom columns.
 - Columns have types: Text, Multiline Text, Number, Decimal Number, Date, DateTime, Time Spent, Drop List, Multi-select Drop List, User, Hyperlink, and Function (computed).
-- To set a drop-list or multi-select value, first call get_custom_columns to discover option IDs, then pass the option ID (not the display label) to set_custom_field.
+- To set a drop-list or multi-select value, pass option IDs (from get_custom_columns or the create_custom_column response `items`), not display labels, to set_custom_field.
 - **Function** fields are read-only — they appear in get_custom_fields output but cannot be set via set_custom_field.
 - Use onlySet parameter on get_custom_fields to skip empty fields.
 
+## Creating Columns
+
+The create_custom_column description covers sections and types. Extra rules:
+- One section per call (list_projects IDs, never a name). "Everywhere" = 3 calls with identical name/type/unit/options so it stays one column.
+- Drop-list items: an array of labels `["Low","High"]` (never one comma-separated string), or `{name, icon}` objects (not label/color). Colours: `greenCircle`, `yellowCircle`, `redCircle`, `blueCircle`, `orangeCircle`, `magentaCircle`.
+- Auto-assign (`autoAssignToUsers`/`autoAssignToUserGroups`) only works on singleSelectionDropList; tell the user multi-select can't.
+- `updateOn*` date flags need `updateOnlyFirstTime` (true = first time, false = every time).
+- `useForTimeReporting` replaces the project's time-reporting column (one for planning+backlog, one for QA): only set it when asked, and tell the user.
+- "Already exists" = name taken in that section (case-insensitive): tell the user. No formula columns, renames or deletes.
+
 ## Tool Mapping
 
-| User Intent                     | Tool               | Key Parameters               |
-|---------------------------------|--------------------|------------------------------|
-| List available custom columns   | get_custom_columns | projectId, activeOnly        |
-| Read task's custom field values | get_custom_fields  | taskId, onlySet              |
-| Set a custom field value        | set_custom_field   | taskId, customFieldId, value |
+| User Intent                     | Tool                 | Key Parameters               |
+|---------------------------------|----------------------|------------------------------|
+| List available custom columns   | get_custom_columns   | projectId, activeOnly        |
+| Read task's custom field values | get_custom_fields    | taskId, onlySet              |
+| Set a custom field value        | set_custom_field     | taskId, customFieldId, value |
+| Add a column to a project       | create_custom_column | projectId, name, columnType  |
 
 ## Value Formats by Type
 

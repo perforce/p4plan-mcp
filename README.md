@@ -15,7 +15,7 @@
     <a href="#quick-start-npx">Quick Start</a> ·
     <a href="#installation">Install</a> ·
     <a href="#client-configuration">Client Configurations</a> ·
-    <a href="#available-tools-28-total">Tools</a>
+    <a href="#available-tools-29-total">Tools</a>
   </p>
   <p align="center">
     <a href="#skills--resources">Skills</a> ·
@@ -278,7 +278,9 @@ Copy the `access_token` value and use it in your MCP client configuration.
 
 > **Note:** JWT tokens expire. When your token expires, the server will fail to start with an authentication error. Generate a new JWT using the same `curl` command above.
 
-## Available Tools (28 total)
+## Available Tools (29 total)
+
+Tool arguments are parsed leniently, so less capable models succeed more often. Enum values match regardless of case, spaces, `_` or `-` (`"Time Spent"` → `timeSpent`). `"true"`/`"yes"` are accepted for booleans, numbers for IDs, numeric strings for numbers, and JSON-encoded lists or comma-separated ID lists. Anything that can't be mapped unambiguously is rejected with the allowed values.
 
 ### Projects
 
@@ -374,6 +376,14 @@ Copy the `access_token` value and use it in your MCP client configuration.
 </details>
 
 <details>
+  <summary><strong><code>create_custom_column</code></strong> - Create a custom column (e.g. Time Spent) in a project section</summary>
+
+- **Parameters**: `projectId` (planning, backlog or QA ID), `name`, `columnType`, `activated`, `readOnly`, plus type-specific `unitName`, `updateOn*`/`updateOnlyFirstTime`, `useForTimeReporting`/`updateWorkRemaining`, `dropListItems` (labels, or objects with `icon`, `autoAssignToUsers`, `autoAssignToUserGroups`)
+- **Use cases**: Set up a project's columns without the UI. Requires main project manager rights
+
+</details>
+
+<details>
   <summary><strong><code>get_custom_fields</code></strong> - Get custom field values set on a task</summary>
 
 - **Parameters**: `taskId`, `onlySet`
@@ -384,7 +394,7 @@ Copy the `access_token` value and use it in your MCP client configuration.
 <details>
   <summary><strong><code>set_custom_field</code></strong> - Set a custom field value on a task</summary>
 
-- **Parameters**: `taskId`, `columnId`, `value`
+- **Parameters**: `taskId`, `customFieldId`, `value`
 - **Use cases**: Update project-specific metadata
 
 </details>
@@ -721,7 +731,7 @@ The server includes **skill files** — domain-specific guides that help AI agen
 | custom-fields      | Custom columns, project-specific metadata                   |
 | gantt-scheduling   | Scheduled tasks, timeline, dependencies                     |
 | workflows          | Status workflows, status state machines                     |
-| pipeline           | Pipeline stages, breakdown, defects in a pipeline stage     |
+| pipeline           | Pipeline steps, breakdown, defects in a pipeline step       |
 | comment-html-format | Allowed HTML subset for comments and multiline fields      |
 | mentions           | @user mention syntax in comments                            |
 

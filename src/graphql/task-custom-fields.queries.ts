@@ -352,3 +352,122 @@ export const SET_CUSTOM_FIELD_MUTATIONS: Record<string, string> = {
     }
   `,
 };
+
+export const GET_COLUMN_NAMES_QUERY = /* GraphQL */ `
+  query GetColumnNames($id: ID!) {
+    columns(id: $id) {
+      id
+      name
+      __typename
+    }
+  }
+`;
+
+export const GET_ASSIGNABLE_USERS_AND_GROUPS_QUERY = /* GraphQL */ `
+  query GetAssignableUsersAndGroups($id: ID!) {
+    projectAvailableUsersAndGroups(projectID: $id) {
+      __typename
+      ... on NormalUser {
+        id
+        name
+      }
+      ... on QaUser {
+        id
+        name
+      }
+      ... on PlaceholderUser {
+        id
+        name
+      }
+      ... on UserGroup {
+        id
+        name
+      }
+    }
+  }
+`;
+
+const CREATED_COLUMN_FIELDS = /* GraphQL */ `
+  id
+  projectID
+  name
+  readOnly
+  activated
+  __typename
+`;
+
+const CREATED_UNIT_FIELDS = /* GraphQL */ `
+  unitName
+`;
+
+const CREATED_DROP_LIST_FIELDS = /* GraphQL */ `
+  items {
+    id
+    name
+    icon
+  }
+`;
+
+function buildCreateCustomColumnMutation(
+  columnTypeName: string,
+  inputType: string,
+  extraFields = '',
+): string {
+  const mutationName = `create${columnTypeName}CustomColumn`;
+  return /* GraphQL */ `
+    mutation Create${columnTypeName}CustomColumn(
+      $projectID: ID!
+      $input: ${inputType}!
+    ) {
+      ${mutationName}(
+        projectID: $projectID
+        ${mutationName}Input: $input
+      ) {
+        ${CREATED_COLUMN_FIELDS}
+        ${extraFields}
+      }
+    }
+  `;
+}
+
+export const CREATE_CUSTOM_COLUMN_MUTATIONS: Record<string, string> = {
+  text: buildCreateCustomColumnMutation('Text', 'CreateCustomColumnInput'),
+  hyperlink: buildCreateCustomColumnMutation(
+    'Hyperlink',
+    'CreateCustomColumnInput',
+  ),
+  multilineText: buildCreateCustomColumnMutation(
+    'MultilineText',
+    'CreateCustomColumnInput',
+  ),
+  user: buildCreateCustomColumnMutation('User', 'CreateCustomColumnInput'),
+  number: buildCreateCustomColumnMutation(
+    'Number',
+    'CreateNumberCustomColumnInput',
+    CREATED_UNIT_FIELDS,
+  ),
+  decimalNumber: buildCreateCustomColumnMutation(
+    'DecimalNumber',
+    'CreateNumberCustomColumnInput',
+    CREATED_UNIT_FIELDS,
+  ),
+  date: buildCreateCustomColumnMutation('Date', 'CreateDateCustomColumnInput'),
+  dateTime: buildCreateCustomColumnMutation(
+    'DateTime',
+    'CreateDateCustomColumnInput',
+  ),
+  timeSpent: buildCreateCustomColumnMutation(
+    'TimeSpent',
+    'CreateTimeSpentCustomColumnInput',
+  ),
+  singleSelectionDropList: buildCreateCustomColumnMutation(
+    'SingleSelectionDropList',
+    'CreateDropListCustomColumnInput',
+    CREATED_DROP_LIST_FIELDS,
+  ),
+  multipleSelectionDropList: buildCreateCustomColumnMutation(
+    'MultipleSelectionDropList',
+    'CreateDropListCustomColumnInput',
+    CREATED_DROP_LIST_FIELDS,
+  ),
+};

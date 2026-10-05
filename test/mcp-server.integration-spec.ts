@@ -167,6 +167,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
           'get_my_tasks', // task items
           'create_item', // task crud
           'search_tasks',
+          'create_custom_column', // task custom fields
         ]),
       );
     });
@@ -176,6 +177,46 @@ describe('MCP Server integration (real tools, mocked network)', () => {
       for (const tool of tools) {
         expect(tool.inputSchema.type).toBe('object');
       }
+    });
+
+    it('publishes every parameter description defined on the tools', async () => {
+      const { tools } = await client.listTools();
+      const definitions = new Map(
+        toolsService.listTools().map((tool) => [tool.name, tool]),
+      );
+
+      for (const tool of tools) {
+        const definition = definitions.get(tool.name);
+        const published = (tool.inputSchema.properties ?? {}) as Record<
+          string,
+          { description?: string }
+        >;
+        for (const [key, property] of Object.entries(
+          definition?.inputSchema.properties ?? {},
+        )) {
+          const { description } = property as { description?: string };
+          if (description) {
+            expect({
+              tool: tool.name,
+              key,
+              description: published[key]?.description,
+            }).toEqual({ tool: tool.name, key, description });
+          }
+        }
+      }
+    });
+
+    it('keeps enum values in the published schema', async () => {
+      const { tools } = await client.listTools();
+      const createColumn = tools.find((t) => t.name === 'create_custom_column');
+      const columnType = (
+        createColumn?.inputSchema.properties as Record<
+          string,
+          { enum?: string[] }
+        >
+      ).columnType;
+
+      expect(columnType.enum).toContain('timeSpent');
     });
 
     it('marks required arguments as required in the published schema', async () => {
@@ -270,6 +311,173 @@ describe('MCP Server integration (real tools, mocked network)', () => {
       expect(result.content[0].text).toContain('something broke');
     });
 
+    it('coerces loosely typed arguments the way smaller models send them', async () => {
+      mockQuery.mockResolvedValueOnce({ columns: [] }).mockResolvedValueOnce({
+        createTimeSpentCustomColumn: { id: 'col-1', name: 'Time Spent' },
+      });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: 100,
+            name: 'Time Spent',
+            columnType: 'Time Spent',
+            useForTimeReporting: 'true',
+            updateWorkRemaining: 'no',
+          },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      const [query, variables] = mockQuery.mock.calls[1] as [
+        string,
+        Record<string, unknown>,
+      ];
+      expect(query).toContain('createTimeSpentCustomColumn(');
+      expect(variables).toEqual({
+        projectID: '100',
+        input: {
+          name: 'Time Spent',
+          readOnly: false,
+          activated: true,
+          useForTimeReporting: true,
+          updateWorkRemaining: false,
+        },
+      });
+    });
+
+    it('accepts a type alias and keeps commas inside drop-list labels', async () => {
+      mockQuery.mockResolvedValueOnce({ columns: [] }).mockResolvedValueOnce({
+        createSingleSelectionDropListCustomColumn: { id: 'col-1' },
+      });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: ['Q1, 2026', 'Backend'],
+          },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      const [, variables] = mockQuery.mock.calls[1] as [
+        string,
+        { input: Record<string, unknown> },
+      ];
+      expect(variables.input.dropListItems).toEqual([
+        { name: 'Q1, 2026', icon: 'default' },
+        { name: 'Backend', icon: 'default' },
+      ]);
+    });
+
+    it.each([
+      ['Time Spent', 'createTimeSpentCustomColumn('],
+      ['TimeSpentCustomColumn', 'createTimeSpentCustomColumn('],
+      ['integer', 'createNumberCustomColumn('],
+      ['url', 'createHyperlinkCustomColumn('],
+      ['date and time', 'createDateTimeCustomColumn('],
+    ])('maps the column type %p', async (columnType, expectedMutation) => {
+      mockQuery
+        .mockResolvedValueOnce({ columns: [] })
+        .mockResolvedValueOnce({ created: { id: 'col-1' } });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: { projectId: '100', name: 'New column', columnType },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      const [query] = mockQuery.mock.calls[1] as [string];
+      expect(query).toContain(expectedMutation);
+    });
+
+    it('rejects drop-list options sent as one comma-separated string', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: 'Bug, regression',
+          },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it.each(['time', 'list'])(
+      'does not guess a column type for %p',
+      async (columnType) => {
+        const result = asResult(
+          await client.callTool({
+            name: 'create_custom_column',
+            arguments: { projectId: '100', name: 'Vague', columnType },
+          }),
+        );
+
+        expect(result.isError).toBe(true);
+        expect(mockQuery).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a JSON-string option with unknown keys instead of using it as a label', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: ['{"label":"Low","color":"red"}'],
+          },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('not a valid option');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('rejects malformed JSON lists instead of splitting them', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: "['Low','High']",
+          },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('still rejects values that cannot be mapped unambiguously', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: { projectId: '100', name: 'Calc', columnType: 'formula' },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('timeSpent');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
     it('supports interleaved list and call operations over one session', async () => {
       mockQuery.mockResolvedValue({ userProjects: [] });
 
@@ -301,7 +509,8 @@ describe('MCP Server integration (real tools, mocked network)', () => {
 
       const read = await client.readResource({ uri: first.uri });
       expect(read.contents.length).toBeGreaterThan(0);
-      expect(typeof read.contents[0].text).toBe('string');
+      const [content] = read.contents;
+      expect('text' in content && typeof content.text).toBe('string');
     });
   });
 });
