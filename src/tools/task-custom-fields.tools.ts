@@ -178,6 +178,15 @@ function isMeaningful(value: unknown): boolean {
   );
 }
 
+function isJsonObjectOrArray(value: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === 'object' && parsed !== null;
+  } catch {
+    return false;
+  }
+}
+
 function parseDropListItems(
   rawItems: unknown,
   columnType: string,
@@ -189,7 +198,7 @@ function parseDropListItems(
   }
 
   const items = rawItems.map((rawItem: unknown, index) => {
-    if (typeof rawItem === 'string' && /^\s*[[{]/.test(rawItem)) {
+    if (typeof rawItem === 'string' && isJsonObjectOrArray(rawItem)) {
       throw new Error(
         `create_custom_column: dropListItems[${index}] is not a valid option: ${rawItem}. Use a plain label or an object with name and optional icon, autoAssignToUsers, autoAssignToUserGroups (not label/color); icon must be a listed value, e.g. purple = magentaCircle`,
       );

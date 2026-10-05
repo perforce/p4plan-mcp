@@ -733,6 +733,28 @@ describe('TaskCustomFieldsTools', () => {
       expect(mockGraphqlClient.query).not.toHaveBeenCalled();
     });
 
+    it('should keep labels that start with a bracket but are not JSON', async () => {
+      mockGraphqlClient.query
+        .mockResolvedValueOnce(existingColumns)
+        .mockResolvedValueOnce({ created: { id: 'col-9' } });
+
+      await callTool('create_custom_column', {
+        projectId: '100',
+        name: 'Priority',
+        columnType: 'singleSelectionDropList',
+        dropListItems: ['[P1] Critical', '[Legacy] Bug', '{draft}'],
+      });
+
+      const [, variables] = getLastQueryCall(mockGraphqlClient.query);
+      expect(variables.input).toMatchObject({
+        dropListItems: [
+          { name: '[P1] Critical', icon: 'default' },
+          { name: '[Legacy] Bug', icon: 'default' },
+          { name: '{draft}', icon: 'default' },
+        ],
+      });
+    });
+
     it('should reject duplicate drop-list item names', async () => {
       await expect(
         callTool('create_custom_column', {
