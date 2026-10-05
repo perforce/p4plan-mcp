@@ -44,14 +44,14 @@ The create_custom_column description covers sections and types. Extra rules:
 | Decimal Number         | Numeric string, e.g. "5.5"                       |
 | Date                   | ISO date "YYYY-MM-DD"                            |
 | DateTime               | ISO datetime "YYYY-MM-DDTHH:MM:SS"               |
-| Time Spent             | Hours as numeric string, e.g. "2.5"              |
+| Time Spent             | Hours to add, e.g. "2.5" (negative subtracts)    |
 | Drop List              | Option ID from get_custom_columns                |
 | Multi-select Drop List | Comma-separated option IDs, e.g. "id1, id2, id3" |
 | Hyperlink              | URL string                                       |
 | User                   | Comma-separated user IDs from list_project_users |
 | Function               | Read-only — computed value                       |
 
-To clear a field, pass an empty string as the value.
+To clear a text, multiline, hyperlink, drop-list, user or time spent field, pass an empty string as the value. Number, decimal and date fields cannot be cleared through the API.
 
 ## Related Skills
 

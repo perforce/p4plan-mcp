@@ -1,6 +1,6 @@
 ---
 name: p4-plan-project-navigation
-description: Navigate P4 Plan projects, discover items, search, and filter. Use when user mentions projects, navigation, finding items, project structure, getting started, search, find, filter, or report.
+description: Navigate and create P4 Plan projects, discover items, search, and filter. Use when user mentions projects, creating or copying a project, navigation, finding items, project structure, getting started, search, find, filter, or report.
 ---
 
 # Project Navigation in P4 Plan
@@ -16,6 +16,8 @@ Every project has **three sections**, each with a different ID:
 | **QA**       | Bugs                              | project.qaID                    |
 
 Call get_project(projectId) to retrieve backlogID and qaID. Most tools accept the project ID directly and resolve the correct section internally.
+
+create_project needs administrator rights and adds you as main manager. If its result lists `failed`, the project was still created: report it, don't call again.
 
 ## Filter Values Quick Reference
 
@@ -35,6 +37,7 @@ Call get_project(projectId) to retrieve backlogID and qaID. Most tools accept th
 | Search by name                    | search_tasks       | findQuery, projectId, limit          |
 | Get any item's full details       | get_tasks          | taskIds                              |
 | Read custom field values          | get_custom_fields  | taskId, onlySet                      |
+| Create a project and its team     | create_project     | name, members, managers              |
 
 ## Typical Starting Sequence
 

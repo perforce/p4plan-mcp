@@ -168,6 +168,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
           'create_item', // task crud
           'search_tasks',
           'create_custom_column', // task custom fields
+          'create_project',
         ]),
       );
     });
@@ -463,6 +464,70 @@ describe('MCP Server integration (real tools, mocked network)', () => {
 
       expect(result.isError).toBe(true);
       expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('creates a project from loosely typed arguments', async () => {
+      mockGraphqlClient.getCurrentUser.mockResolvedValueOnce({
+        id: '1',
+        name: 'Admin',
+      });
+      mockQuery.mockImplementation((query: string) => {
+        if (query.includes('GetUsersAndGroups')) {
+          return Promise.resolve({
+            users: [
+              {
+                __typename: 'NormalUser',
+                id: '13',
+                name: 'UserA',
+                isDeleted: false,
+                isLocked: false,
+              },
+              {
+                __typename: 'NormalUser',
+                id: '14',
+                name: 'UserB',
+                isDeleted: false,
+                isLocked: false,
+              },
+            ],
+            userGroups: [],
+          });
+        }
+        if (query.includes('CreateProject')) {
+          return Promise.resolve({
+            createProject: { id: '500', name: 'Apollo' },
+          });
+        }
+        return Promise.resolve({});
+      });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Apollo',
+            defaultMode: 'Gantt',
+            methodTemplate: 'LEAN',
+            members: '13, 14',
+            addMeAsManager: 'no',
+          },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      const createCall = (
+        mockQuery.mock.calls as Array<[string, Record<string, unknown>]>
+      ).find(([query]) => query.includes('CreateProject'));
+      expect(createCall?.[1]).toEqual({
+        input: {
+          name: 'Apollo',
+          defaultMode: 'taskScheduling',
+          methodTemplate: 'lean',
+        },
+      });
+      expect(
+        parseText<{ members: string[]; managers: string[] }>(result),
+      ).toMatchObject({ members: ['UserA', 'UserB'], managers: [] });
     });
 
     it('still rejects values that cannot be mapped unambiguously', async () => {

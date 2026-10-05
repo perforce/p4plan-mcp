@@ -15,7 +15,7 @@
     <a href="#quick-start-npx">Quick Start</a> ·
     <a href="#installation">Install</a> ·
     <a href="#client-configuration">Client Configurations</a> ·
-    <a href="#available-tools-29-total">Tools</a>
+    <a href="#available-tools-30-total">Tools</a>
   </p>
   <p align="center">
     <a href="#skills--resources">Skills</a> ·
@@ -278,7 +278,7 @@ Copy the `access_token` value and use it in your MCP client configuration.
 
 > **Note:** JWT tokens expire. When your token expires, the server will fail to start with an authentication error. Generate a new JWT using the same `curl` command above.
 
-## Available Tools (29 total)
+## Available Tools (30 total)
 
 Tool arguments are parsed leniently, so less capable models succeed more often. Enum values match regardless of case, spaces, `_` or `-` (`"Time Spent"` → `timeSpent`). `"true"`/`"yes"` are accepted for booleans, numbers for IDs, numeric strings for numbers, and JSON-encoded lists or comma-separated ID lists. Anything that can't be mapped unambiguously is rejected with the allowed values.
 
@@ -296,6 +296,14 @@ Tool arguments are parsed leniently, so less capable models succeed more often. 
 
 - **Parameters**: `projectId`
 - **Use cases**: Retrieve section IDs (backlog, QA, planning) for other tools
+
+</details>
+
+<details>
+  <summary><strong><code>create_project</code></strong> - Create a project and set up its team in one call</summary>
+
+- **Parameters**: `name`, optional `methodTemplate`, `defaultMode`, `members` (user or global group names/IDs), `managers` (normal user names/IDs), `addMeAsManager` (default true), or `copyFromProjectId` with `copyUsers`/`copyColumns` to base it on an existing project
+- **Use cases**: Stand up a new project for a team without the UI. Requires P4 Plan administrator rights; steps that fail after the project is created are listed in `failed`
 
 </details>
 
@@ -722,7 +730,7 @@ The server includes **skill files** — domain-specific guides that help AI agen
 
 | Skill              | Purpose                                                     |
 |--------------------|-------------------------------------------------------------|
-| project-navigation | Finding projects, items, and getting started                |
+| project-navigation | Finding and creating projects, items, getting started       |
 | search-queries     | P4 Plan Find query syntax (column names, values, operators) |
 | task-management    | Task CRUD, status, assignments, comments, attachments       |
 | planning           | Sprints, releases, commitment, allocations                  |

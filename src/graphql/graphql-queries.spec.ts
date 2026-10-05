@@ -81,6 +81,23 @@ describe('GraphQL Queries Validation', () => {
       expect(isValidGraphQL(projectQueries.GET_PROJECT_QUERY)).toBe(true);
       expect(projectQueries.GET_PROJECT_QUERY).toContain('project(id: $id)');
     });
+
+    it.each([
+      ['CREATE_PROJECT_MUTATION', 'createProject(createProjectInput: $input)'],
+      ['CLONE_PROJECT_MUTATION', 'cloneProject(cloneProjectInput: $input)'],
+      ['ADD_PROJECT_USER_MUTATION', 'addProjectUser('],
+      ['ADD_PROJECT_USER_GROUP_MUTATION', 'addProjectUserGroup('],
+      [
+        'UPDATE_PROJECT_USER_ACCESS_RIGHTS_MUTATION',
+        'updateProjectUserAccessRights(',
+      ],
+      ['GET_PROJECT_MEMBER_IDS_QUERY', 'project(id: $id)'],
+      ['ALL_PROJECTS_QUERY', 'projects {'],
+      ['GET_USERS_AND_GROUPS_QUERY', 'userGroups'],
+    ] as const)('%s should be valid GraphQL', (name, expected) => {
+      expect(isValidGraphQL(projectQueries[name])).toBe(true);
+      expect(projectQueries[name]).toContain(expected);
+    });
   });
 
   describe('user.queries', () => {
