@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
-import configuration, { envFlag } from './configuration';
+import configuration, { envFlag, parseReadOnlyEnv } from './configuration';
 
 describe('envFlag', () => {
   it.each(['true', '1'])('is on for %j', (value) => {
@@ -11,6 +11,38 @@ describe('envFlag', () => {
   it.each([undefined, '', 'false', '0'])('is off for %j', (value) => {
     expect(envFlag(value)).toBe(false);
   });
+});
+
+describe('parseReadOnlyEnv', () => {
+  it.each(['true', '1', 'yes', 'on', 'TRUE', 'True', ' true ', 'true\n', 'ON'])(
+    'turns read-only on for %j',
+    (value) => {
+      expect(parseReadOnlyEnv(value)).toEqual({
+        readOnly: true,
+        recognised: true,
+      });
+    },
+  );
+
+  it.each([undefined, '', '  ', 'false', '0', 'no', 'off', 'FALSE', ' Off '])(
+    'leaves read-only off for %j',
+    (value) => {
+      expect(parseReadOnlyEnv(value)).toEqual({
+        readOnly: false,
+        recognised: true,
+      });
+    },
+  );
+
+  it.each(['ture', 'enabled', 'readonly', '2'])(
+    'fails closed for the unrecognised value %j',
+    (value) => {
+      expect(parseReadOnlyEnv(value)).toEqual({
+        readOnly: true,
+        recognised: false,
+      });
+    },
+  );
 });
 
 describe('configuration', () => {
@@ -44,10 +76,13 @@ describe('configuration', () => {
       expect(configuration().readOnly).toBe(false);
     });
 
-    it.each(['true', '1'])('is enabled by P4PLAN_READONLY=%s', (value) => {
-      process.env.P4PLAN_READONLY = value;
-      expect(configuration().readOnly).toBe(true);
-    });
+    it.each(['true', '1', 'TRUE', 'yes', 'typo'])(
+      'is enabled by P4PLAN_READONLY=%s',
+      (value) => {
+        process.env.P4PLAN_READONLY = value;
+        expect(configuration().readOnly).toBe(true);
+      },
+    );
 
     it.each(['false', '0', ''])('stays off for P4PLAN_READONLY=%j', (value) => {
       process.env.P4PLAN_READONLY = value;

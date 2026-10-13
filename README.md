@@ -223,8 +223,8 @@ The server communicates via stdin/stdout. It is not meant to be run interactivel
 Start the server with the `--readonly` argument, or set `P4PLAN_READONLY=true`, to make it read-only:
 
 - Only the tools that read are registered. Tools that create, update, comment, link, commit or delete are not offered to the model at all.
-- As a second layer, every GraphQL request a tool makes is checked, and mutations are refused before they reach the P4 Plan API.
-- The model is told that changes are not available, so it explains this instead of trying.
+- As a second layer, every GraphQL request a tool makes is checked, and only plain queries are sent to the P4 Plan API. Mutations, subscriptions and anything that cannot be classified are refused.
+- The model is told that changes are not available, so it explains this instead of trying. The skills that are only about writing (`comment-html-format`, `mentions`) are left out.
 
 This means content read from P4 Plan (a task description or a comment, for example) cannot steer the model into changing data through this server.
 
@@ -752,7 +752,7 @@ claude mcp add p4-plan \
 - `P4PLAN_API_AUTH_TOKEN` - JWT token for authenticating with the P4 Plan GraphQL API
 - `P4PLAN_API_URL` - P4 Plan GraphQL API URL, base origin only — no path, no trailing slash (the server appends `/graphql`, `/healthcheck` and `/attachment/<id>`). Defaults to `http://localhost:4000` when unset; `config-example.env` ships an HTTPS example.
 - `P4PLAN_ALLOW_SELF_SIGNED_CERTS` - Set to `true` to accept self-signed or untrusted TLS certificates when connecting to the API over HTTPS (default: `false`)
-- `P4PLAN_READONLY` - Set to `true` to expose only the tools that read, same as the `--readonly` argument (default: `false`). See [Read-only mode](#read-only-mode)
+- `P4PLAN_READONLY` - Set to `true` (or `1`, `yes`, `on`) to expose only the tools that read, same as the `--readonly` argument (default: `false`). Case and surrounding spaces are ignored; an unrecognised value turns read-only mode on and logs a warning. See [Read-only mode](#read-only-mode)
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `debug`)
 - `SEARCH_LIMIT` - Maximum number of results returned by `search_tasks` (default: `400`)
 

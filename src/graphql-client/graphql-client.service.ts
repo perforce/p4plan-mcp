@@ -28,24 +28,55 @@ export interface LoginResult {
 }
 
 /**
- * True when a GraphQL document defines a mutation operation. Comments and
- * string literals are ignored and only top-level keywords (outside any
- * selection set) count, so a field or argument named "mutation" does not.
+ * True only when every top-level definition of a GraphQL document is a
+ * `query`, a `fragment` or a shorthand `{ ... }` query. This is an allowlist,
+ * so it fails closed: mutations, subscriptions and anything it cannot
+ * classify (malformed or unbalanced documents) are not read-only. String
+ * literals and comments are skipped, so their content cannot hide a keyword.
  */
-export function isMutationDocument(document: string): boolean {
+export function isReadOnlyDocument(document: string): boolean {
   const code = document.replace(
     /"""(?:\\"""|[\s\S])*?"""|"(?:\\.|[^"\\\n])*"|#[^\n\r]*/g,
     ' ',
   );
-  let depth = 0;
-  let topLevel = '';
-  for (const char of code) {
-    // Braces become a space, so "Q{...}mutation" still reads "Q mutation".
-    if (char === '{') depth++;
-    else if (char === '}') depth = Math.max(0, depth - 1);
-    topLevel += depth === 0 && char !== '}' ? char : ' ';
+  let i = 0;
+  let definitions = 0;
+
+  const skipIgnored = () => {
+    while (i < code.length && /[\s,]/.test(code[i])) i++;
+  };
+  // Skip the { ... } block that starts at code[i]; false if it never closes.
+  const skipBlock = (): boolean => {
+    for (let depth = 0; i < code.length; i++) {
+      if (code[i] === '{') depth++;
+      else if (code[i] === '}' && --depth === 0) {
+        i++;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (skipIgnored(); i < code.length; skipIgnored()) {
+    if (code[i] !== '{') {
+      const keyword = /^[_A-Za-z]\w*/.exec(code.slice(i))?.[0];
+      if (keyword !== 'query' && keyword !== 'fragment') return false;
+      i += keyword.length;
+
+      // Name, variables, directives and type condition up to the selection
+      // set. Default values in (...) may contain braces of their own.
+      let parens = 0;
+      while (i < code.length && !(code[i] === '{' && parens === 0)) {
+        if (code[i] === '(') parens++;
+        else if (code[i] === ')' && --parens < 0) return false;
+        else if (code[i] === '}' && parens === 0) return false;
+        i++;
+      }
+    }
+    if (!skipBlock()) return false;
+    definitions++;
   }
-  return /(^|[^\w$@])mutation(?!\w)/.test(topLevel);
+  return definitions > 0;
 }
 
 interface JwtPayload {
@@ -181,11 +212,11 @@ export class GraphQLClientService implements OnModuleInit {
     variables: Record<string, unknown>,
     authToken: string,
   ): Promise<T> {
-    // Second layer under the tool filter: in read-only mode no mutation
-    // leaves the server, even from a write tool wrongly marked as read.
-    if (this.readOnly && isMutationDocument(query)) {
+    // Second layer under the tool filter: in read-only mode only plain
+    // queries leave the server, even from a write tool wrongly marked as read.
+    if (this.readOnly && !isReadOnlyDocument(query)) {
       throw new Error(
-        'Blocked a change: this P4 Plan MCP server is running in read-only mode (--readonly / P4PLAN_READONLY), so nothing can be created, updated or deleted.',
+        'Blocked a GraphQL request that is not a plain query: this P4 Plan MCP server is running in read-only mode (--readonly / P4PLAN_READONLY), so nothing can be created, updated or deleted.',
       );
     }
 

@@ -427,6 +427,8 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
           },
           required: ['projectId', 'name', 'columnType'],
         },
+        // Destructive: with useForTimeReporting it replaces the project's
+        // current time-reporting column.
         annotations: writeAnnotations({
           destructive: true,
           idempotent: false,

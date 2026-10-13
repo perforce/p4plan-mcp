@@ -21,15 +21,27 @@ Operators: AND (or +), OR, NOT (or !), parentheses for grouping.
 
 RETRY POLICY: if search_tasks returns errors or zero results 3 times consecutively, STOP retrying. Tell the user what you tried (show the exact findQuery values) and ask them to clarify.`;
 
-const SKILLS_LIST = `Additional skills are available via the read_skill tool:
-  project-navigation, task-management, planning, backlog-refinement,
-  bug-tracking, custom-fields, gantt-scheduling, workflows, pipeline,
-  comment-html-format, mentions.`;
+// search-queries is introduced on its own above, so it is not listed here.
+const ADDITIONAL_SKILLS = [
+  'project-navigation',
+  'task-management',
+  'planning',
+  'backlog-refinement',
+  'bug-tracking',
+  'custom-fields',
+  'gantt-scheduling',
+  'workflows',
+  'pipeline',
+  'comment-html-format',
+  'mentions',
+];
 
-// comment-html-format and mentions are only about writing.
-const READ_ONLY_SKILLS_LIST = `Additional skills are available via the read_skill tool:
-  project-navigation, task-management, planning, backlog-refinement,
-  bug-tracking, custom-fields, gantt-scheduling, workflows, pipeline.`;
+/** Skills that are only about writing; left out in read-only mode. */
+export const WRITE_ONLY_SKILLS = ['comment-html-format', 'mentions'];
+
+function skillsList(skills: string[]): string {
+  return `Additional skills are available via the read_skill tool:\n  ${skills.join(', ')}.`;
+}
 
 const READ_ONLY_NOTE = `READ-ONLY MODE: this server only exposes tools that read. Creating, updating, commenting, linking, committing, deleting and other changes are not available, even where a skill describes them. If the user asks for a change, say it cannot be made through this server (it was started with --readonly / P4PLAN_READONLY) instead of trying.`;
 
@@ -44,7 +56,7 @@ export const SERVER_INSTRUCTIONS = [
   SEARCH_SKILL_RULE,
   HTML_WRITE_RULE,
   SEARCH_QUICK_REFERENCE,
-  SKILLS_LIST,
+  skillsList(ADDITIONAL_SKILLS),
 ].join('\n\n');
 
 /**
@@ -55,6 +67,8 @@ export const READ_ONLY_SERVER_INSTRUCTIONS = [
   INTRO,
   SEARCH_SKILL_RULE,
   SEARCH_QUICK_REFERENCE,
-  READ_ONLY_SKILLS_LIST,
+  skillsList(
+    ADDITIONAL_SKILLS.filter((name) => !WRITE_ONLY_SKILLS.includes(name)),
+  ),
   READ_ONLY_NOTE,
 ].join('\n\n');

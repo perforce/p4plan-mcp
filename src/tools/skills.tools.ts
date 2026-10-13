@@ -1,8 +1,10 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import type { LoggerService } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { WRITE_ONLY_SKILLS } from '../config/server-instructions';
 import { McpToolResult } from './tools.service';
 import { ToolRegistration, READ_ONLY_ANNOTATIONS } from './task-helpers';
 import { readFileSync, readdirSync, existsSync } from 'fs';
@@ -15,13 +17,21 @@ import { join } from 'path';
  * (detailed syntax/usage guides) at runtime — even when the client lacks
  * native MCP resource-reading capability.
  *
- * Skills are loaded from the `skills/` directory at construction time.
+ * Skills are loaded from the `skills/` directory at construction time. In
+ * read-only mode the skills that are only about writing are left out, so
+ * read_skill and the skill resources match the read-only instructions.
  */
 @Injectable()
 export class SkillsTools {
   private readonly skillContents = new Map<string, string>();
 
-  constructor(@Inject('LOGGER') private readonly logger: LoggerService) {
+  private readonly readOnly: boolean;
+
+  constructor(
+    @Inject('LOGGER') private readonly logger: LoggerService,
+    @Optional() configService?: ConfigService,
+  ) {
+    this.readOnly = configService?.get<boolean>('readOnly') === true;
     this.loadSkills();
   }
 
@@ -45,7 +55,8 @@ export class SkillsTools {
 
     const skillDirs = readdirSync(skillsDir, { withFileTypes: true })
       .filter((dir) => dir.isDirectory())
-      .map((dir) => dir.name);
+      .map((dir) => dir.name)
+      .filter((name) => !(this.readOnly && WRITE_ONLY_SKILLS.includes(name)));
 
     for (const skillName of skillDirs) {
       const skillPath = join(skillsDir, skillName, 'SKILL.md');

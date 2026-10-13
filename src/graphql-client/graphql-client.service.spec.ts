@@ -8,35 +8,56 @@ import { of, throwError } from 'rxjs';
 import { AxiosResponse, InternalAxiosRequestConfig, AxiosError } from 'axios';
 import {
   GraphQLClientService,
-  isMutationDocument,
+  isReadOnlyDocument,
 } from './graphql-client.service';
 import * as graphqlDocuments from '../graphql';
 
-describe('isMutationDocument', () => {
+describe('isReadOnlyDocument', () => {
   // Every document the server can send, including the per-type mutation maps.
+  // *_RETURN_FIELDS are field lists spliced into mutations, not documents.
   const documents = Object.entries(graphqlDocuments).flatMap(([name, value]) =>
-    typeof value === 'string'
-      ? [{ name, document: value, mutation: name.includes('MUTATION') }]
-      : name.endsWith('_MUTATIONS')
-        ? Object.entries(value).map(([key, document]) => ({
-            name: `${name}.${key}`,
-            document,
-            mutation: true,
-          }))
-        : [],
+    name.endsWith('_RETURN_FIELDS')
+      ? []
+      : typeof value === 'string'
+        ? [{ name, document: value, readOnly: !name.includes('MUTATION') }]
+        : name.endsWith('_MUTATIONS')
+          ? Object.entries(value).map(([key, document]) => ({
+              name: `${name}.${key}`,
+              document,
+              readOnly: false,
+            }))
+          : [],
   );
 
   it('covers the exported GraphQL documents', () => {
-    expect(documents.filter((d) => d.mutation).length).toBeGreaterThan(20);
-    expect(documents.filter((d) => !d.mutation).length).toBeGreaterThan(20);
+    expect(documents.filter((d) => d.readOnly).length).toBeGreaterThan(20);
+    expect(documents.filter((d) => !d.readOnly).length).toBeGreaterThan(20);
   });
 
   it.each(documents)(
-    'detects $name as a mutation: $mutation',
-    ({ document, mutation }) => {
-      expect(isMutationDocument(document)).toBe(mutation);
+    'classifies $name as read-only: $readOnly',
+    ({ document, readOnly }) => {
+      expect(isReadOnlyDocument(document)).toBe(readOnly);
     },
   );
+
+  it.each([
+    '{ me { id } }',
+    'query { tasks(find: "mutation { x }") { id } }',
+    'query { item { mutation } }',
+    '# mutation { x }\nquery { a }',
+    'query Q($q: String = "mutation") { a(q: $q) }',
+    'query { a(text: """\nmutation { x }\n""") }',
+    'fragment F on Mutation { id }\nquery { a { ...F } }',
+    'fragment F on mutation { id }\nquery { a { ...F } }',
+    'query Q($mutation: ID) { a(id: $mutation) }',
+    'query @mutation { a }',
+    'query mutation { a }',
+    'query Q($i: In = { a: { b: 1 } }) { f(i: $i) { id } }',
+    'query A { a }, query B { b }',
+  ])('allows the query %j', (document) => {
+    expect(isReadOnlyDocument(document)).toBe(true);
+  });
 
   it.each([
     'mutation { deleteComment(id: "1") { id } }',
@@ -46,21 +67,18 @@ describe('isMutationDocument', () => {
     'query Q($s: String = """ \\""" { """) { a }\nmutation M { x }',
     'query Q{a{id}}mutation M{b{id}}',
     'fragment F on Thing{a}mutation Do{create(x:1){...F}}',
-  ])('detects a mutation in %j', (document) => {
-    expect(isMutationDocument(document)).toBe(true);
-  });
-
-  it.each([
-    'query { tasks(find: "mutation { x }") { id } }',
-    'query { item { mutation } }',
-    '# mutation { x }\nquery { a }',
-    'query Q($q: String = "mutation") { a(q: $q) }',
-    'query { a(text: """\nmutation { x }\n""") }',
-    'fragment F on Mutation { id }\nquery { a { ...F } }',
-    'query Q($mutation: ID) { a(id: $mutation) }',
-    'query @mutation { a }',
-  ])('does not treat %j as a mutation', (document) => {
-    expect(isMutationDocument(document)).toBe(false);
+    'subscription { taskChanged { id } }',
+    'Mutation { a }',
+    '',
+    '   ',
+    'query { a',
+    'query Q } { a }',
+    'query Q ( { a }',
+    'query Q($a: ID)) { a }',
+    '"unterminated { a }',
+    'hello',
+  ])('rejects %j', (document) => {
+    expect(isReadOnlyDocument(document)).toBe(false);
   });
 });
 
