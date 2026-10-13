@@ -1,6 +1,7 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { GraphQLClientService } from '../graphql-client/graphql-client.service';
 import { McpToolResult } from './tools.service';
 import { GET_PROJECT_SECTIONS_QUERY, GET_TASK_TYPE_QUERY } from '../graphql';
@@ -17,11 +18,39 @@ export interface ToolRegistration {
       properties: Record<string, unknown>;
       required?: string[];
     };
+    annotations: Readonly<ToolAnnotations>;
   };
   handler: (
     args: Record<string, unknown>,
     authToken: string,
   ) => Promise<McpToolResult> | McpToolResult;
+}
+
+/**
+ * Annotations for tools that only read. Required on every tool: read-only mode
+ * (--readonly / P4PLAN_READONLY) keeps exactly the tools with readOnlyHint
+ * true, and clients use the hints to decide when to ask before a call.
+ */
+export const READ_ONLY_ANNOTATIONS: Readonly<ToolAnnotations> = Object.freeze({
+  readOnlyHint: true,
+  openWorldHint: false,
+});
+
+/**
+ * Annotations for tools that write. destructive: the call deletes or overwrites
+ * existing data, including status or sprint (as opposed to only adding). idempotent: repeating the call
+ * with the same arguments has no further effect.
+ */
+export function writeAnnotations(options: {
+  destructive: boolean;
+  idempotent: boolean;
+}): ToolAnnotations {
+  return {
+    readOnlyHint: false,
+    destructiveHint: options.destructive,
+    idempotentHint: options.idempotent,
+    openWorldHint: false,
+  };
 }
 
 export interface NamedId {

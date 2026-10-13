@@ -6,4 +6,5 @@ services:
       - P4PLAN_API_URL=http://host.docker.internal:4000
       - LOG_LEVEL=debug
       - SEARCH_LIMIT=400
+      - P4PLAN_READONLY=${P4PLAN_READONLY:-false}
     restart: unless-stopped

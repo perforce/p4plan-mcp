@@ -30,6 +30,10 @@ import { ToolsService } from '../src/tools/tools.service';
 import { SkillsTools } from '../src/tools/skills.tools';
 import { GraphQLClientService } from '../src/graphql-client/graphql-client.service';
 import { createMcpServer } from '../src/factories/mcp-server.factory';
+import {
+  READ_ONLY_SERVER_INSTRUCTIONS,
+  SERVER_INSTRUCTIONS,
+} from '../src/config/server-instructions';
 
 // Read independently of the factory so the assertion below proves the
 // handshake reports the real package version, not a literal copied twice.
@@ -557,6 +561,108 @@ describe('MCP Server integration (real tools, mocked network)', () => {
       // The tool set is stable across calls on the same connection.
       const { tools: after } = await client.listTools();
       expect(after.map((t) => t.name)).toEqual(before.map((t) => t.name));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Tool annotations & read-only mode
+  // ---------------------------------------------------------------------------
+
+  describe('tool annotations', () => {
+    it('publishes annotations for every tool', async () => {
+      const { tools } = await client.listTools();
+
+      tools.forEach((tool) => {
+        expect(typeof tool.annotations?.readOnlyHint).toBe('boolean');
+      });
+      const createItem = tools.find((t) => t.name === 'create_item');
+      expect(createItem?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+      });
+    });
+  });
+
+  describe('read-only mode', () => {
+    let readOnlyServer: McpServer;
+    let readOnlyClient: Client;
+
+    beforeAll(async () => {
+      readOnlyServer = createMcpServer({
+        toolsService,
+        skillsTools: moduleRef.get(SkillsTools),
+        authToken: AUTH_TOKEN,
+        instructions: READ_ONLY_SERVER_INSTRUCTIONS,
+        readOnly: true,
+      });
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      readOnlyClient = new Client({
+        name: 'integration-test-readonly-client',
+        version: '1.0.0',
+      });
+      await readOnlyServer.connect(serverTransport);
+      await readOnlyClient.connect(clientTransport);
+    });
+
+    afterAll(async () => {
+      await readOnlyClient?.close().catch(() => {});
+      await readOnlyServer?.close().catch(() => {});
+    });
+
+    it('publishes only read tools', async () => {
+      const { tools } = await readOnlyClient.listTools();
+      const names = tools.map((t) => t.name).sort();
+
+      expect(names).toEqual(
+        toolsService
+          .listTools({ readOnly: true })
+          .map((t) => t.name)
+          .sort(),
+      );
+      expect(names).toContain('get_tasks');
+      expect(names).not.toContain('post_comment');
+      expect(names).not.toContain('delete_comment');
+      tools.forEach((tool) => {
+        expect(tool.annotations?.readOnlyHint).toBe(true);
+      });
+    });
+
+    it('rejects a call to a write tool without reaching the API', async () => {
+      const result = asResult(
+        await readOnlyClient.callTool({
+          name: 'post_comment',
+          arguments: { taskId: '1', text: 'hello' },
+        }),
+      );
+
+      // Write tools are not registered, so the SDK answers before any handler.
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Tool post_comment not found');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('still serves read tools', async () => {
+      mockQuery.mockResolvedValue({
+        userProjects: [{ id: '1', name: 'Alpha' }],
+      });
+
+      const result = asResult(
+        await readOnlyClient.callTool({ name: 'list_projects', arguments: {} }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toContain('Alpha');
+    });
+
+    it('tells the model that writes are unavailable', () => {
+      const instructions = readOnlyClient.getInstructions() ?? '';
+
+      expect(instructions).toContain('READ-ONLY MODE');
+      // The rules for writing comments and fields only make sense with write tools.
+      expect(instructions).not.toContain('post_comment');
+      expect(instructions).not.toContain('comment-html-format');
+      expect(SERVER_INSTRUCTIONS).toContain('post_comment');
     });
   });
 

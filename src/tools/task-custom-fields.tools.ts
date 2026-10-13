@@ -13,6 +13,8 @@ import {
   NamedId,
   ProjectSections,
   findProjectByName,
+  READ_ONLY_ANNOTATIONS,
+  writeAnnotations,
 } from './task-helpers';
 import {
   GET_WORKFLOWS_QUERY,
@@ -287,6 +289,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
           },
           required: ['projectId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getCustomColumns(args, authToken),
     });
@@ -424,6 +427,12 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
           },
           required: ['projectId', 'name', 'columnType'],
         },
+        // Destructive: with useForTimeReporting it replaces the project's
+        // current time-reporting column.
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: false,
+        }),
       },
       handler: (args, authToken) => this.createCustomColumn(args, authToken),
     });
@@ -449,6 +458,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getCustomFields(args, authToken),
     });
@@ -479,6 +489,10 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
           },
           required: ['taskId', 'customFieldId', 'value'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: false,
+        }),
       },
       handler: (args, authToken) => this.setCustomField(args, authToken),
     });
@@ -499,6 +513,7 @@ export class TaskCustomFieldsTools extends TaskToolsBase {
           },
           required: ['projectId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getWorkflows(args, authToken),
     });

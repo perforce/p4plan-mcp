@@ -113,6 +113,80 @@ describe('ToolsService', () => {
     });
   });
 
+  describe('read-only mode', () => {
+    const READ_TOOLS = [
+      'download_attachment',
+      'get_attachments',
+      'get_comments',
+      'get_current_user',
+      'get_custom_columns',
+      'get_custom_fields',
+      'get_my_tasks',
+      'get_project',
+      'get_tasks',
+      'get_workflows',
+      'list_project_users',
+      'list_projects',
+      'read_skill',
+      'search_tasks',
+    ];
+
+    it('annotates every tool as read-only or write', () => {
+      service.listTools().forEach((tool) => {
+        expect(typeof tool.annotations.readOnlyHint).toBe('boolean');
+        expect(tool.annotations.openWorldHint).toBe(false);
+        if (!tool.annotations.readOnlyHint) {
+          expect(typeof tool.annotations.destructiveHint).toBe('boolean');
+          expect(typeof tool.annotations.idempotentHint).toBe('boolean');
+        }
+      });
+    });
+
+    it('marks deleting and overwriting tools as destructive', () => {
+      const destructive = service
+        .listTools()
+        .filter((tool) => tool.annotations.destructiveHint === true)
+        .map((tool) => tool.name);
+
+      expect(destructive).toEqual(
+        expect.arrayContaining([
+          'delete_comment',
+          'delete_attachment',
+          'unlink_items',
+          'update_item',
+          'complete_task',
+          'start_task',
+          'commit_to_sprint',
+          'create_custom_column',
+        ]),
+      );
+      expect(destructive).not.toContain('create_item');
+      expect(destructive).not.toContain('post_comment');
+      expect(destructive).not.toContain('link_items');
+      const setCustomField = service
+        .listTools()
+        .find((tool) => tool.name === 'set_custom_field');
+      // Time Spent values are added, so repeating the call is not a no-op.
+      expect(setCustomField?.annotations.idempotentHint).toBe(false);
+    });
+
+    it('lists only the read tools', () => {
+      const names = service
+        .listTools({ readOnly: true })
+        .map((tool) => tool.name)
+        .sort();
+
+      expect(names).toEqual(READ_TOOLS);
+    });
+
+    it('lists every tool when read-only mode is off', () => {
+      expect(service.listTools({ readOnly: false })).toHaveLength(
+        service.listTools().length,
+      );
+      expect(service.listTools().length).toBeGreaterThan(READ_TOOLS.length);
+    });
+  });
+
   describe('callTool', () => {
     it('should return error for unknown tool', async () => {
       const result = await service.callTool('unknown_tool', {}, 'auth-token');
