@@ -3,6 +3,7 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import type { LoggerService } from '@nestjs/common';
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { ProjectsTools } from './projects.tools';
 import { TasksTools } from './tasks.tools';
 import { UsersTools } from './users.tools';
@@ -19,6 +20,7 @@ export interface McpTool {
     properties: Record<string, unknown>;
     required?: string[];
   };
+  annotations: Readonly<ToolAnnotations>;
 }
 
 /**
@@ -97,10 +99,13 @@ export class ToolsService {
   }
 
   /**
-   * List all available tools
+   * List all available tools (only the read-only ones in read-only mode)
    */
-  listTools(): McpTool[] {
-    return Array.from(this.tools.values());
+  listTools(options: { readOnly?: boolean } = {}): McpTool[] {
+    const tools = Array.from(this.tools.values());
+    return options.readOnly
+      ? tools.filter((tool) => tool.annotations.readOnlyHint === true)
+      : tools;
   }
 
   /**

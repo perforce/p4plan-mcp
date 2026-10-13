@@ -6,7 +6,63 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { of, throwError } from 'rxjs';
 import { AxiosResponse, InternalAxiosRequestConfig, AxiosError } from 'axios';
-import { GraphQLClientService } from './graphql-client.service';
+import {
+  GraphQLClientService,
+  isMutationDocument,
+} from './graphql-client.service';
+import * as graphqlDocuments from '../graphql';
+
+describe('isMutationDocument', () => {
+  // Every document the server can send, including the per-type mutation maps.
+  const documents = Object.entries(graphqlDocuments).flatMap(([name, value]) =>
+    typeof value === 'string'
+      ? [{ name, document: value, mutation: name.includes('MUTATION') }]
+      : name.endsWith('_MUTATIONS')
+        ? Object.entries(value).map(([key, document]) => ({
+            name: `${name}.${key}`,
+            document,
+            mutation: true,
+          }))
+        : [],
+  );
+
+  it('covers the exported GraphQL documents', () => {
+    expect(documents.filter((d) => d.mutation).length).toBeGreaterThan(20);
+    expect(documents.filter((d) => !d.mutation).length).toBeGreaterThan(20);
+  });
+
+  it.each(documents)(
+    'detects $name as a mutation: $mutation',
+    ({ document, mutation }) => {
+      expect(isMutationDocument(document)).toBe(mutation);
+    },
+  );
+
+  it.each([
+    'mutation { deleteComment(id: "1") { id } }',
+    'fragment F on Task { id }\nmutation Update($id: ID!) { updateTask(id: $id) { ...F } }',
+    'query A { a }\nmutation B { b }',
+    '  # leading comment\n  mutation{x}',
+    'query Q($s: String = """ \\""" { """) { a }\nmutation M { x }',
+    'query Q{a{id}}mutation M{b{id}}',
+    'fragment F on Thing{a}mutation Do{create(x:1){...F}}',
+  ])('detects a mutation in %j', (document) => {
+    expect(isMutationDocument(document)).toBe(true);
+  });
+
+  it.each([
+    'query { tasks(find: "mutation { x }") { id } }',
+    'query { item { mutation } }',
+    '# mutation { x }\nquery { a }',
+    'query Q($q: String = "mutation") { a(q: $q) }',
+    'query { a(text: """\nmutation { x }\n""") }',
+    'fragment F on Mutation { id }\nquery { a { ...F } }',
+    'query Q($mutation: ID) { a(id: $mutation) }',
+    'query @mutation { a }',
+  ])('does not treat %j as a mutation', (document) => {
+    expect(isMutationDocument(document)).toBe(false);
+  });
+});
 
 describe('GraphQLClientService', () => {
   let service: GraphQLClientService;
@@ -370,6 +426,114 @@ describe('GraphQLClientService', () => {
         'GraphQLClientService',
       );
     });
+  });
+
+  describe('read-only mode', () => {
+    const okResponse: AxiosResponse = {
+      data: { data: { ok: true } },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as InternalAxiosRequestConfig,
+    };
+
+    const modules: TestingModule[] = [];
+
+    afterEach(async () => {
+      await Promise.all(modules.splice(0).map((module) => module.close()));
+    });
+
+    async function createService(readOnly: unknown) {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          GraphQLClientService,
+          { provide: HttpService, useValue: mockHttpService },
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest.fn((key: string) =>
+                key === 'readOnly' ? readOnly : 'http://localhost:8080',
+              ),
+            },
+          },
+          { provide: 'LOGGER', useValue: mockLogger },
+        ],
+      }).compile();
+      modules.push(module);
+      return module.get<GraphQLClientService>(GraphQLClientService);
+    }
+
+    it('blocks mutations without sending a request', async () => {
+      const readOnlyService = await createService(true);
+
+      await expect(
+        readOnlyService.query(
+          'mutation { deleteComment(id: "1") { id } }',
+          {},
+          'tok',
+        ),
+      ).rejects.toThrow('read-only mode');
+      expect(mockHttpService.post.mock.calls).toHaveLength(0);
+    });
+
+    it('still sends queries', async () => {
+      const readOnlyService = await createService(true);
+      mockHttpService.post.mockReturnValue(of(okResponse));
+
+      await expect(
+        readOnlyService.query('query { ok }', {}, 'tok'),
+      ).resolves.toEqual({ ok: true });
+    });
+
+    it('sends mutations when read-only mode is off', async () => {
+      mockHttpService.post.mockReturnValue(of(okResponse));
+
+      await expect(
+        service.query('mutation { ok }', {}, 'tok'),
+      ).resolves.toEqual({ ok: true });
+    });
+  });
+
+  describe('downloadAttachment', () => {
+    const fileResponse: AxiosResponse = {
+      data: Buffer.from('hello'),
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as InternalAxiosRequestConfig,
+    };
+
+    it('posts to the attachment endpoint of a numeric task ID', async () => {
+      mockHttpService.post.mockReturnValue(of(fileResponse));
+
+      const buffer = await service.downloadAttachment(' 42 ', 'a.txt', 'tok');
+
+      expect(buffer.toString()).toBe('hello');
+      const [url, body] = mockHttpService.post.mock.calls[0] as [
+        string,
+        unknown,
+      ];
+      expect(url).toBe('http://localhost:8080/attachment/42');
+      expect(body).toEqual({ path: 'a.txt' });
+    });
+
+    it.each([
+      '../graphql?query=mutation{deleteComment(id:"1"){id}}',
+      '%2e%2e/graphql?query=mutation{deleteComment(id:"1"){id}}',
+      '../../healthcheck#',
+      '42/../../graphql',
+      '42?query=mutation{x}',
+      '42#',
+      '',
+    ])(
+      'rejects a task ID that is not numeric without sending a request: %s',
+      async (taskId) => {
+        await expect(
+          service.downloadAttachment(taskId, 'a.txt', 'tok'),
+        ).rejects.toThrow('expected a numeric task ID');
+        expect(mockHttpService.post.mock.calls).toHaveLength(0);
+      },
+    );
   });
 
   // Guards the debug-log sanitizer (src/graphql-client/graphql-client.service.ts

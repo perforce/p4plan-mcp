@@ -27,6 +27,27 @@ export interface LoginResult {
   };
 }
 
+/**
+ * True when a GraphQL document defines a mutation operation. Comments and
+ * string literals are ignored and only top-level keywords (outside any
+ * selection set) count, so a field or argument named "mutation" does not.
+ */
+export function isMutationDocument(document: string): boolean {
+  const code = document.replace(
+    /"""(?:\\"""|[\s\S])*?"""|"(?:\\.|[^"\\\n])*"|#[^\n\r]*/g,
+    ' ',
+  );
+  let depth = 0;
+  let topLevel = '';
+  for (const char of code) {
+    // Braces become a space, so "Q{...}mutation" still reads "Q mutation".
+    if (char === '{') depth++;
+    else if (char === '}') depth = Math.max(0, depth - 1);
+    topLevel += depth === 0 && char !== '}' ? char : ' ';
+  }
+  return /(^|[^\w$@])mutation(?!\w)/.test(topLevel);
+}
+
 interface JwtPayload {
   sub: string | number;
   username: string;
@@ -37,6 +58,7 @@ interface JwtPayload {
 @Injectable()
 export class GraphQLClientService implements OnModuleInit {
   private readonly graphqlUrl: string;
+  private readonly readOnly: boolean;
 
   constructor(
     private readonly httpService: HttpService,
@@ -44,6 +66,7 @@ export class GraphQLClientService implements OnModuleInit {
     @Inject('LOGGER') private readonly logger: LoggerService,
   ) {
     this.graphqlUrl = this.configService.get<string>('graphqlUrl') as string;
+    this.readOnly = this.configService.get<boolean>('readOnly') === true;
   }
 
   async onModuleInit(): Promise<void> {
@@ -158,6 +181,14 @@ export class GraphQLClientService implements OnModuleInit {
     variables: Record<string, unknown>,
     authToken: string,
   ): Promise<T> {
+    // Second layer under the tool filter: in read-only mode no mutation
+    // leaves the server, even from a write tool wrongly marked as read.
+    if (this.readOnly && isMutationDocument(query)) {
+      throw new Error(
+        'Blocked a change: this P4 Plan MCP server is running in read-only mode (--readonly / P4PLAN_READONLY), so nothing can be created, updated or deleted.',
+      );
+    }
+
     try {
       this.debugOperation(query, variables);
 
@@ -270,15 +301,24 @@ export class GraphQLClientService implements OnModuleInit {
     path: string,
     authToken: string,
   ): Promise<Buffer> {
+    // itemId is part of the URL path: anything but a numeric ID could steer
+    // this authenticated POST to another endpoint (e.g. "../graphql?query=...").
+    const id = String(itemId).trim();
+    if (!/^\d+$/.test(id)) {
+      throw new Error(
+        `Invalid task ID "${itemId}": expected a numeric task ID such as "1900555" (use the id returned by get_tasks or search_tasks).`,
+      );
+    }
+
     try {
       this.logger.debug?.(
-        `Downloading attachment: itemId=${itemId}, path=${path}`,
+        `Downloading attachment: itemId=${id}, path=${path}`,
         GraphQLClientService.name,
       );
 
       const response = await firstValueFrom(
         this.httpService.post<ArrayBuffer>(
-          `${this.graphqlUrl}/attachment/${itemId}`,
+          `${this.graphqlUrl}/attachment/${id}`,
           { path },
           {
             headers: {
@@ -305,10 +345,9 @@ export class GraphQLClientService implements OnModuleInit {
           });
         }
         if (error.response?.status === 404) {
-          throw new Error(
-            `Attachment not found: item ${itemId}, path "${path}"`,
-            { cause: error },
-          );
+          throw new Error(`Attachment not found: item ${id}, path "${path}"`, {
+            cause: error,
+          });
         }
         throw new Error(`Attachment download failed: ${error.message}`, {
           cause: error,

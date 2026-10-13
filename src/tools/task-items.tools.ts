@@ -4,7 +4,11 @@
 import { Injectable } from '@nestjs/common';
 import { GraphQLClientService } from '../graphql-client/graphql-client.service';
 import { McpToolResult } from './tools.service';
-import { TaskToolsBase, ToolRegistration } from './task-helpers';
+import {
+  TaskToolsBase,
+  ToolRegistration,
+  READ_ONLY_ANNOTATIONS,
+} from './task-helpers';
 import { GET_TODO_LIST_QUERY } from '../graphql';
 
 /**
@@ -51,6 +55,7 @@ export class TaskItemsTools extends TaskToolsBase {
             },
           },
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getMyTasks(args, authToken),
     });

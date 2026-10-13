@@ -4,7 +4,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import type { LoggerService } from '@nestjs/common';
 import { McpToolResult } from './tools.service';
-import { ToolRegistration } from './task-helpers';
+import { ToolRegistration, READ_ONLY_ANNOTATIONS } from './task-helpers';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -95,6 +95,7 @@ export class SkillsTools {
           },
           required: ['skillName'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args) => this.readSkill(args),
     });

@@ -206,13 +206,18 @@ export function toolInputSchemaToZod(
   return shape;
 }
 
-/** Register every ToolsService tool on the server, routing calls through callTool with the auth token. */
+/**
+ * Register every ToolsService tool on the server, routing calls through
+ * callTool with the auth token. In read-only mode only the read tools are
+ * registered.
+ */
 export function registerTools(
   mcpServer: McpServer,
   toolsService: ToolsService,
   authToken: string,
+  readOnly = false,
 ): number {
-  const tools = toolsService.listTools();
+  const tools = toolsService.listTools({ readOnly });
 
   for (const tool of tools) {
     const zodShape = toolInputSchemaToZod(tool);
@@ -222,6 +227,7 @@ export function registerTools(
       {
         description: tool.description,
         inputSchema: zodShape,
+        annotations: tool.annotations,
       },
       async (args) => {
         const result = await toolsService.callTool(
@@ -293,17 +299,30 @@ export function createMcpServer(options: {
   authToken: string;
   instructions?: string;
   logger?: LoggerService;
+  /** Register only the tools that read (--readonly / P4PLAN_READONLY). */
+  readOnly?: boolean;
 }): McpServer {
-  const { toolsService, skillsTools, authToken, instructions, logger } =
-    options;
+  const {
+    toolsService,
+    skillsTools,
+    authToken,
+    instructions,
+    logger,
+    readOnly = false,
+  } = options;
 
   const mcpServer = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     instructions ? { instructions } : undefined,
   );
 
-  const toolCount = registerTools(mcpServer, toolsService, authToken);
-  logger?.log(`Registering ${toolCount} tools`, 'P4PlanMCP');
+  const toolCount = registerTools(mcpServer, toolsService, authToken, readOnly);
+  logger?.log(
+    readOnly
+      ? `Read-only mode: registering ${toolCount} read tools`
+      : `Registering ${toolCount} tools`,
+    'P4PlanMCP',
+  );
 
   const skillCount = registerSkillResources(mcpServer, skillsTools);
   logger?.log(`Registered ${skillCount} skill resources`, 'P4PlanMCP');

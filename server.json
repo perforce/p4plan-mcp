@@ -30,6 +30,11 @@
           "name": "P4PLAN_ALLOW_SELF_SIGNED_CERTS",
           "description": "Set to 'true' to accept self-signed TLS certificates from the GraphQL API. Default: false.",
           "isRequired": false
+        },
+        {
+          "name": "P4PLAN_READONLY",
+          "description": "Set to 'true' to expose only the tools that read (same as the --readonly argument). Default: false.",
+          "isRequired": false
         }
       ]
     },
@@ -52,6 +57,11 @@
         {
           "name": "P4PLAN_ALLOW_SELF_SIGNED_CERTS",
           "description": "Set to 'true' to accept self-signed TLS certificates from the GraphQL API. Default: false.",
+          "isRequired": false
+        },
+        {
+          "name": "P4PLAN_READONLY",
+          "description": "Set to 'true' to expose only the tools that read (same as the --readonly argument). Default: false.",
           "isRequired": false
         }
       ]

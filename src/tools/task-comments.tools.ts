@@ -8,6 +8,8 @@ import {
   TaskToolsBase,
   ToolRegistration,
   validateRequired,
+  READ_ONLY_ANNOTATIONS,
+  writeAnnotations,
 } from './task-helpers';
 import {
   GET_COMMENTS_QUERY,
@@ -57,6 +59,7 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getComments(args, authToken),
     });
@@ -82,6 +85,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'text'],
         },
+        annotations: writeAnnotations({
+          destructive: false,
+          idempotent: false,
+        }),
       },
       handler: (args, authToken) => this.postComment(args, authToken),
     });
@@ -102,6 +109,7 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getAttachments(args, authToken),
     });
@@ -131,6 +139,7 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'path'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) =>
         this.downloadAttachmentFile(args, authToken),
@@ -157,6 +166,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'path'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.deleteAttachment(args, authToken),
     });
@@ -182,6 +195,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.setCoverImage(args, authToken),
     });
@@ -212,6 +229,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'commentId', 'text'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.updateComment(args, authToken),
     });
@@ -237,6 +258,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'commentId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.deleteComment(args, authToken),
     });

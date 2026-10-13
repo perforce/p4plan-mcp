@@ -8,6 +8,7 @@ import {
   TaskToolsBase,
   ToolRegistration,
   validateRequired,
+  writeAnnotations,
 } from './task-helpers';
 import {
   ADD_INTERNAL_LINK_MUTATION,
@@ -72,6 +73,10 @@ export class TaskLinksTools extends TaskToolsBase {
           },
           required: ['fromItemId', 'relation'],
         },
+        annotations: writeAnnotations({
+          destructive: false,
+          idempotent: false,
+        }),
       },
       handler: (args, authToken) => this.linkItems(args, authToken),
     });
@@ -101,6 +106,10 @@ export class TaskLinksTools extends TaskToolsBase {
           },
           required: ['fromItemId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.unlinkItems(args, authToken),
     });

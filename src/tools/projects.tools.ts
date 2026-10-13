@@ -13,6 +13,8 @@ import {
   findProjectByName,
   isMeaningful,
   validateRequired,
+  READ_ONLY_ANNOTATIONS,
+  writeAnnotations,
 } from './task-helpers';
 import {
   LIST_PROJECTS_QUERY,
@@ -141,6 +143,7 @@ export class ProjectsTools {
           type: 'object',
           properties: {},
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.listProjects(args, authToken),
     });
@@ -160,6 +163,7 @@ export class ProjectsTools {
           },
           required: ['projectId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getProject(args, authToken),
     });
@@ -231,6 +235,10 @@ export class ProjectsTools {
           },
           required: ['name'],
         },
+        annotations: writeAnnotations({
+          destructive: false,
+          idempotent: false,
+        }),
       },
       handler: (args, authToken) => this.createProject(args, authToken),
     });

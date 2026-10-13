@@ -211,10 +211,44 @@ LOG_LEVEL=info
 # Allow self-signed TLS certificates when connecting to the P4 Plan API over HTTPS
 # Set to true if your API uses a self-signed or untrusted certificate
 # P4PLAN_ALLOW_SELF_SIGNED_CERTS=true
+
+# Read-only mode: expose only the tools that read (same as the --readonly argument)
+# P4PLAN_READONLY=true
 ```
 
-
 The server communicates via stdin/stdout. It is not meant to be run interactively — MCP clients (VS Code, Claude Desktop) spawn it as a child process automatically.
+
+### Read-only mode
+
+Start the server with the `--readonly` argument, or set `P4PLAN_READONLY=true`, to make it read-only:
+
+- Only the tools that read are registered. Tools that create, update, comment, link, commit or delete are not offered to the model at all.
+- As a second layer, every GraphQL request a tool makes is checked, and mutations are refused before they reach the P4 Plan API.
+- The model is told that changes are not available, so it explains this instead of trying.
+
+This means content read from P4 Plan (a task description or a comment, for example) cannot steer the model into changing data through this server.
+
+```json
+{
+    "servers": {
+        "p4-plan": {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["-y", "@perforce/p4plan-mcp", "--readonly"],
+            "env": {
+                "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
+                "P4PLAN_API_URL": "http://localhost:4000"
+            }
+        }
+    }
+}
+```
+
+With Docker, pass `-e P4PLAN_READONLY=true` or put `--readonly` after the image name. With Docker Compose, set `P4PLAN_READONLY=true` in your shell or `.env`; `docker-compose.yml` passes it to the container.
+
+Read-only mode limits what the MCP server does; it does not change what the token may do. For the strongest guarantee, also authenticate as a P4 Plan user that only has read access.
+
+Every tool publishes MCP tool annotations. `readOnlyHint` marks the tools that only read; tools that write also carry `destructiveHint` (the call deletes or overwrites data) and `idempotentHint`. Clients that support annotations can use them to ask for confirmation before a write.
 
 ## Authentication
 
@@ -718,6 +752,7 @@ claude mcp add p4-plan \
 - `P4PLAN_API_AUTH_TOKEN` - JWT token for authenticating with the P4 Plan GraphQL API
 - `P4PLAN_API_URL` - P4 Plan GraphQL API URL, base origin only — no path, no trailing slash (the server appends `/graphql`, `/healthcheck` and `/attachment/<id>`). Defaults to `http://localhost:4000` when unset; `config-example.env` ships an HTTPS example.
 - `P4PLAN_ALLOW_SELF_SIGNED_CERTS` - Set to `true` to accept self-signed or untrusted TLS certificates when connecting to the API over HTTPS (default: `false`)
+- `P4PLAN_READONLY` - Set to `true` to expose only the tools that read, same as the `--readonly` argument (default: `false`). See [Read-only mode](#read-only-mode)
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `debug`)
 - `SEARCH_LIMIT` - Maximum number of results returned by `search_tasks` (default: `400`)
 
