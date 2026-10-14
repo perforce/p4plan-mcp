@@ -1,7 +1,13 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { ConfigService } from '@nestjs/config';
 import { TaskCommentsTools } from './task-comments.tools';
+import type { UploadSource } from '../graphql-client/graphql-client.service';
 import { McpToolResult } from './tools.service';
 import {
   parseToolResult,
@@ -49,7 +55,8 @@ describe('TaskCommentsTools', () => {
       expect(names).toContain('set_cover_image');
       expect(names).toContain('update_comment');
       expect(names).toContain('delete_comment');
-      expect(names).toHaveLength(8);
+      expect(names).toContain('upload_attachment');
+      expect(names).toHaveLength(9);
     });
   });
 
@@ -396,6 +403,293 @@ describe('TaskCommentsTools', () => {
       await expect(callTool('delete_comment', { taskId: 't' })).rejects.toThrow(
         "delete_comment: 'commentId' is required",
       );
+    });
+  });
+
+  describe('upload_attachment', () => {
+    let dir: string;
+    let uploaded: { taskId: string; source: UploadSource; body: string }[];
+
+    const attachment = (path: string, coverImage = false) => ({
+      id: path,
+      path,
+      size: 5,
+      version: 1,
+      coverImage,
+      addedBy: { id: 'u-1', name: 'Alice' },
+      date: '2026-10-14',
+    });
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'p4plan-upload-tool-'));
+      mkdirSync(join(dir, 'shots'));
+      writeFileSync(join(dir, 'shots', 'bug.png'), 'PNGDATA');
+      uploaded = [];
+      mockGraphqlClient.uploadAttachment = jest.fn(
+        async (taskId: string, source: UploadSource) => {
+          const chunks: Buffer[] = [];
+          if (Buffer.isBuffer(source.data)) chunks.push(source.data);
+          else
+            for await (const chunk of source.data)
+              chunks.push(Buffer.from(chunk as Buffer));
+          uploaded.push({
+            taskId,
+            source,
+            body: Buffer.concat(chunks).toString('utf-8'),
+          });
+          return { p4PlanPath: 'hansoft://server/DocumentID/1' };
+        },
+      );
+      tools = new TaskCommentsTools(
+        mockGraphqlClient as unknown as GraphQLClientService,
+        config({ uploadDirs: [dir] }),
+      );
+    });
+
+    function config(values: Record<string, unknown>): ConfigService {
+      return { get: (key: string) => values[key] } as unknown as ConfigService;
+    }
+
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    async function upload(
+      args: Record<string, unknown>,
+      rootUris: string[] = [],
+    ): Promise<McpToolResult> {
+      const tool = tools.getTools().get('upload_attachment')!;
+      return await tool.handler(args, 'test-token', {
+        listRoots: () => Promise.resolve(rootUris),
+      });
+    }
+
+    it('uploads text content and returns the new attachment path', async () => {
+      mockGraphqlClient.query
+        .mockResolvedValueOnce({ item: { attachments: [] } })
+        .mockResolvedValueOnce({
+          item: { attachments: [attachment('Att/crash.log')] },
+        });
+
+      const result = await upload({
+        taskId: ' 42 ',
+        content: 'stack trace',
+        fileName: 'crash.log',
+      });
+
+      expect(uploaded).toHaveLength(1);
+      expect(uploaded[0].taskId).toBe('42');
+      expect(uploaded[0].body).toBe('stack trace');
+      expect(uploaded[0].source).toMatchObject({
+        fileName: 'crash.log',
+        mimeType: 'text/plain',
+        size: 11,
+      });
+      expect(parseToolResult(result)).toMatchObject({
+        success: true,
+        path: 'Att/crash.log',
+      });
+      expect(parseToolResult(result).renamed).toBeUndefined();
+    });
+
+    it('streams a local file from an allowed folder', async () => {
+      mockGraphqlClient.query
+        .mockResolvedValueOnce({ item: { attachments: [] } })
+        .mockResolvedValueOnce({
+          item: { attachments: [attachment('Att/bug.png', true)] },
+        });
+
+      const result = await upload({
+        taskId: '42',
+        filePath: join(dir, 'shots', 'bug.png'),
+      });
+
+      expect(uploaded[0].body).toBe('PNGDATA');
+      expect(uploaded[0].source).toMatchObject({
+        fileName: 'bug.png',
+        mimeType: 'image/png',
+        size: 7,
+      });
+      expect(parseToolResult(result)).toMatchObject({ coverImage: true });
+    });
+
+    it('also accepts files inside the client roots', async () => {
+      const other = mkdtempSync(join(tmpdir(), 'p4plan-upload-root-'));
+      writeFileSync(join(other, 'notes.txt'), 'notes');
+      mockGraphqlClient.query.mockResolvedValue({
+        item: { attachments: [] },
+      });
+      tools = new TaskCommentsTools(
+        mockGraphqlClient as unknown as GraphQLClientService,
+      );
+
+      try {
+        await upload({ taskId: '42', filePath: join(other, 'notes.txt') }, [
+          pathToFileURL(other).href,
+        ]);
+        expect(uploaded[0].body).toBe('notes');
+      } finally {
+        rmSync(other, { recursive: true, force: true });
+      }
+    });
+
+    it('reports the name the server gave a duplicate', async () => {
+      mockGraphqlClient.query
+        .mockResolvedValueOnce({
+          item: { attachments: [attachment('A/x.txt')] },
+        })
+        .mockResolvedValueOnce({
+          item: {
+            attachments: [attachment('A/x.txt'), attachment('A/x (1).txt')],
+          },
+        });
+
+      const result = await upload({
+        taskId: '42',
+        content: 'again',
+        fileName: 'x.txt',
+      });
+
+      expect(parseToolResult(result)).toMatchObject({ path: 'A/x (1).txt' });
+      expect(String(parseToolResult(result).renamed)).toContain('x (1).txt');
+    });
+
+    it('falls back to get_attachments when the new entry is not visible', async () => {
+      mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
+
+      const result = await upload({
+        taskId: '42',
+        content: 'x',
+        fileName: 'x.txt',
+      });
+
+      expect(parseToolResult(result)).toMatchObject({
+        success: true,
+        p4PlanPath: 'hansoft://server/DocumentID/1',
+      });
+      expect(result.content[0].text).toContain('get_attachments');
+    });
+
+    it.each([
+      [{ taskId: '42' }, "give 'filePath'"],
+      [
+        { taskId: '42', filePath: '/a', content: 'x', fileName: 'x' },
+        'not both',
+      ],
+      [{ taskId: '42', content: 'x' }, "'fileName' is required"],
+      [{ content: 'x', fileName: 'x' }, "'taskId' is required"],
+    ])('explains wrong arguments %j', async (args, expected) => {
+      await expect(upload(args)).rejects.toThrow(expected);
+      expect(uploaded).toHaveLength(0);
+    });
+
+    it('refuses a file outside the allowed folders without uploading', async () => {
+      mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
+
+      await expect(
+        upload({ taskId: '42', filePath: '/etc/hosts' }),
+      ).rejects.toThrow('outside the folders');
+      expect(uploaded).toHaveLength(0);
+    });
+
+    it('runs parallel uploads one at a time, each seeing its own new attachment', async () => {
+      let attachments: ReturnType<typeof attachment>[] = [];
+      mockGraphqlClient.query.mockImplementation(() =>
+        Promise.resolve({ item: { attachments: [...attachments] } }),
+      );
+      let running = 0;
+      let maxRunning = 0;
+      mockGraphqlClient.uploadAttachment = jest.fn(
+        async (_taskId: string, source: UploadSource) => {
+          running++;
+          maxRunning = Math.max(maxRunning, running);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          const taken = attachments.some(
+            (a) => a.path === `A/${source.fileName}`,
+          );
+          attachments = [
+            ...attachments,
+            attachment(taken ? 'A/x (1).txt' : `A/${source.fileName}`),
+          ];
+          running--;
+          return { p4PlanPath: 'hansoft://server/DocumentID/1' };
+        },
+      );
+
+      const results = await Promise.all(
+        ['x.txt', 'x.txt', 'y.txt'].map((fileName) =>
+          upload({ taskId: '42', content: 'x', fileName }),
+        ),
+      );
+
+      expect(maxRunning).toBe(1);
+      expect(results.map((r) => parseToolResult(r).path)).toEqual([
+        'A/x.txt',
+        'A/x (1).txt',
+        'A/y.txt',
+      ]);
+    });
+
+    it('stops at the per-minute limit with a fix-it error', async () => {
+      mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
+      tools = new TaskCommentsTools(
+        mockGraphqlClient as unknown as GraphQLClientService,
+        config({ uploadDirs: [dir], uploadsPerMinute: 2 }),
+      );
+
+      await upload({ taskId: '42', content: 'a', fileName: 'a.txt' });
+      await upload({ taskId: '42', content: 'b', fileName: 'b.txt' });
+      await expect(
+        upload({ taskId: '42', content: 'c', fileName: 'c.txt' }),
+      ).rejects.toThrow('P4PLAN_UPLOADS_PER_MINUTE');
+      expect(uploaded).toHaveLength(2);
+    });
+
+    it('does not count refused files against the limit', async () => {
+      mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
+      tools = new TaskCommentsTools(
+        mockGraphqlClient as unknown as GraphQLClientService,
+        config({ uploadDirs: [dir], uploadsPerMinute: 1 }),
+      );
+
+      await expect(
+        upload({ taskId: '42', filePath: '/etc/hosts' }),
+      ).rejects.toThrow('outside the folders');
+      await upload({ taskId: '42', content: 'a', fileName: 'a.txt' });
+      expect(uploaded).toHaveLength(1);
+    });
+
+    it('accepts "#42" as an item ID and explains other non-numeric IDs', async () => {
+      mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
+
+      await upload({ taskId: '#42', content: 'x', fileName: 'x.txt' });
+      expect(uploaded[0].taskId).toBe('42');
+      await expect(
+        upload({ taskId: '42/../x', content: 'x', fileName: 'x.txt' }),
+      ).rejects.toThrow("must be the item's numeric ID");
+      expect(uploaded).toHaveLength(1);
+    });
+
+    it('refuses empty files and empty content without uploading', async () => {
+      mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
+      writeFileSync(join(dir, 'empty.txt'), '');
+
+      await expect(
+        upload({ taskId: '42', filePath: join(dir, 'empty.txt') }),
+      ).rejects.toThrow('is empty (0 bytes)');
+      await expect(
+        upload({ taskId: '42', content: '', fileName: 'x.txt' }),
+      ).rejects.toThrow("'content' is empty");
+      expect(uploaded).toHaveLength(0);
+    });
+
+    it('checks the item before reading the file', async () => {
+      mockGraphqlClient.query.mockRejectedValue(new Error('Invalid item ID'));
+
+      await expect(
+        upload({ taskId: '42', filePath: join(dir, 'shots', 'bug.png') }),
+      ).rejects.toThrow('Invalid item ID');
+      expect(uploaded).toHaveLength(0);
     });
   });
 });

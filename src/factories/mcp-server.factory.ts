@@ -206,6 +206,13 @@ export function toolInputSchemaToZod(
   return shape;
 }
 
+/** The client's roots as file:// URIs; [] when it does not support roots. */
+async function listClientRoots(mcpServer: McpServer): Promise<string[]> {
+  if (!mcpServer.server.getClientCapabilities()?.roots) return [];
+  const { roots } = await mcpServer.server.listRoots();
+  return roots.map((root) => root.uri);
+}
+
 /**
  * Register every ToolsService tool on the server, routing calls through
  * callTool with the auth token. In read-only mode only the read tools are
@@ -234,6 +241,7 @@ export function registerTools(
           tool.name,
           args as Record<string, unknown>,
           authToken,
+          { listRoots: () => listClientRoots(mcpServer) },
         );
         return {
           content: result.content.map((content) => {

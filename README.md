@@ -214,6 +214,10 @@ LOG_LEVEL=info
 
 # Read-only mode: expose only the tools that read (same as the --readonly argument)
 # P4PLAN_READONLY=true
+
+# Folders upload_attachment may read files from, besides the workspace folders
+# the MCP client shares. Separate several with ":" (";" on Windows)
+# P4PLAN_UPLOAD_DIRS=/Users/me/Screenshots:/Users/me/logs
 ```
 
 The server communicates via stdin/stdout. It is not meant to be run interactively — MCP clients (VS Code, Claude Desktop) spawn it as a child process automatically.
@@ -247,6 +251,21 @@ This means content read from P4 Plan (a task description or a comment, for examp
 With Docker, pass `-e P4PLAN_READONLY=true` or put `--readonly` after the image name. With Docker Compose, set `P4PLAN_READONLY=true` in your shell or `.env`; `docker-compose.yml` passes it to the container.
 
 Read-only mode limits what the MCP server does; it does not change what the token may do. For the strongest guarantee, also authenticate as a P4 Plan user that only has read access.
+
+### Uploading files
+
+`upload_attachment` attaches a local file, or text the model writes, to a task, bug, sprint or release. Reading local files would let a prompt injection ask for something like `~/.ssh/id_rsa`, so the server only reads files inside allowed folders:
+
+- the workspace folders your MCP client shares with the server (MCP roots), and
+- the folders listed in `P4PLAN_UPLOAD_DIRS` (separate several with `:`, or `;` on Windows).
+
+Symlinks are resolved before the check, hidden files and folders (names starting with `.`, such as `.env`, `.ssh` or `.git`) are never uploaded, and only regular files are read. If the client shares no folders and `P4PLAN_UPLOAD_DIRS` is not set, only text uploads (`content` + `fileName`) work.
+
+With Docker the container cannot see your files: mount a folder and point `P4PLAN_UPLOAD_DIRS` at the path inside the container, for example `-v "$HOME/Screenshots:/uploads:ro" -e P4PLAN_UPLOAD_DIRS=/uploads`, and pass paths such as `/uploads/bug.png`.
+
+The file is streamed to the P4 Plan API (`POST /attachment/<id>/upload`), so its content never passes through the model. The P4 Plan server's own limits apply: its attachment size limit and blocked file types. If a file with the same name is already attached, the server stores the new one as `name (1).ext`. If an upload times out it may still have completed, so check `get_attachments` before retrying.
+
+So that one client cannot flood the P4 Plan API (a model stuck in a loop, or a prompt injection asking for many files), each MCP server runs its uploads one at a time and starts at most `P4PLAN_UPLOADS_PER_MINUTE` uploads per minute (default 20, `0` for no limit). Further calls get an error saying how long to wait.
 
 Every tool publishes MCP tool annotations. `readOnlyHint` marks the tools that only read; tools that write also carry `destructiveHint` (the call deletes or overwrites data) and `idempotentHint`. Clients that support annotations can use them to ask for confirmation before a write.
 
@@ -312,7 +331,7 @@ Copy the `access_token` value and use it in your MCP client configuration.
 
 > **Note:** JWT tokens expire. When your token expires, the server will fail to start with an authentication error. Generate a new JWT using the same `curl` command above.
 
-## Available Tools (30 total)
+## Available Tools (31 total)
 
 Tool arguments are parsed leniently, so less capable models succeed more often. Enum values match regardless of case, spaces, `_` or `-` (`"Time Spent"` → `timeSpent`). `"true"`/`"yes"` are accepted for booleans, numbers for IDs, numeric strings for numbers, and JSON-encoded lists or comma-separated ID lists. Anything that can't be mapped unambiguously is rejected with the allowed values.
 
@@ -515,6 +534,16 @@ Tool arguments are parsed leniently, so less capable models succeed more often. 
 - **Parameters**: `taskId`, `path`
 - Text files returned inline, images as base64
 - **Use cases**: Read attached documents, view screenshots
+
+</details>
+
+<details>
+  <summary><strong><code>upload_attachment</code></strong> - Attach a local file or text to a task</summary>
+
+- **Parameters**: `taskId`, and either `filePath` (optionally `fileName` to rename it) or `content` + `fileName`
+- Local files must be inside an allowed folder, see [Uploading files](#uploading-files)
+- Returns the new attachment `path`; the first image attached becomes the cover image
+- **Use cases**: Attach screenshots, logs or repro files to bug reports and user stories
 
 </details>
 
@@ -753,6 +782,8 @@ claude mcp add p4-plan \
 - `P4PLAN_API_URL` - P4 Plan GraphQL API URL, base origin only — no path, no trailing slash (the server appends `/graphql`, `/healthcheck` and `/attachment/<id>`). Defaults to `http://localhost:4000` when unset; `config-example.env` ships an HTTPS example.
 - `P4PLAN_ALLOW_SELF_SIGNED_CERTS` - Set to `true` to accept self-signed or untrusted TLS certificates when connecting to the API over HTTPS (default: `false`)
 - `P4PLAN_READONLY` - Set to `true` (or `1`, `yes`, `on`) to expose only the tools that read, same as the `--readonly` argument (default: `false`). Case and surrounding spaces are ignored; an unrecognised value turns read-only mode on and logs a warning. See [Read-only mode](#read-only-mode)
+- `P4PLAN_UPLOAD_DIRS` - Folders `upload_attachment` may read files from, in addition to the workspace folders the MCP client shares. Separate several with `:` (`;` on Windows). See [Uploading files](#uploading-files)
+- `P4PLAN_UPLOADS_PER_MINUTE` - Most uploads one MCP server starts per minute (default: `20`, `0` = no limit). Uploads always run one at a time
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `debug`)
 - `SEARCH_LIMIT` - Maximum number of results returned by `search_tasks` (default: `400`)
 

@@ -29,6 +29,7 @@ Bugs are tracked in the **Quality Assurance** section. Use the project's qaID (f
 | Add discussion          | post_comment        | taskId, text                                                                  |
 | List attached files     | get_attachments     | taskId                                                                        |
 | View screenshot/file    | download_attachment | taskId, path (from get_attachments)                                           |
+| Attach screenshot/log   | upload_attachment   | taskId, filePath (absolute) or content + fileName                             |
 | Commit bug to sprint    | commit_to_sprint    | taskId, sprintId                                                              |
 | Get team for assignment | list_project_users  | projectId                                                                     |
 

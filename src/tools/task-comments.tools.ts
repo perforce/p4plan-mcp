@@ -1,9 +1,11 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { GraphQLClientService } from '../graphql-client/graphql-client.service';
-import { McpToolResult } from './tools.service';
+import type { UploadSource } from '../graphql-client/graphql-client.service';
+import { McpToolResult, ToolCallContext } from './tools.service';
 import {
   TaskToolsBase,
   ToolRegistration,
@@ -20,6 +22,25 @@ import {
   UPDATE_COMMENT_MUTATION,
   DELETE_COMMENT_MUTATION,
 } from '../graphql';
+import {
+  UPLOAD_DIRS_ENV,
+  allowedUploadRoots,
+  openUploadFile,
+  validateAttachmentFileName,
+} from './upload-file';
+import { DEFAULT_UPLOADS_PER_MINUTE, UploadGate } from './upload-gate';
+
+interface Attachment {
+  id: string;
+  path: string;
+  size: number;
+  version: number;
+  imageWidth?: number;
+  imageHeight?: number;
+  coverImage: boolean;
+  addedBy: { id: string; name: string };
+  date: string;
+}
 
 /**
  * Task Comments & Attachments Tools
@@ -31,13 +52,25 @@ import {
  * - delete_comment: Delete a comment
  * - get_attachments: List attachments on a task
  * - download_attachment: Download an attachment file's content
+ * - upload_attachment: Upload a local file or text as an attachment
  * - delete_attachment: Delete an attachment
  * - set_cover_image: Set/unset cover image
  */
 @Injectable()
 export class TaskCommentsTools extends TaskToolsBase {
-  constructor(graphqlClient: GraphQLClientService) {
+  private readonly uploadDirs: string[];
+  private readonly uploadGate: UploadGate;
+
+  constructor(
+    graphqlClient: GraphQLClientService,
+    @Optional() configService?: ConfigService,
+  ) {
     super(graphqlClient);
+    this.uploadDirs = configService?.get<string[]>('uploadDirs') ?? [];
+    this.uploadGate = new UploadGate(
+      configService?.get<number>('uploadsPerMinute') ??
+        DEFAULT_UPLOADS_PER_MINUTE,
+    );
   }
 
   public getTools(): Map<string, ToolRegistration> {
@@ -143,6 +176,54 @@ export class TaskCommentsTools extends TaskToolsBase {
       },
       handler: (args, authToken) =>
         this.downloadAttachmentFile(args, authToken),
+    });
+
+    // upload_attachment
+    tools.set('upload_attachment', {
+      definition: {
+        name: 'upload_attachment',
+        description:
+          'Attach a file to a task, bug, sprint or release, e.g. a screenshot or log for a bug report. Give exactly one of:\n' +
+          '- filePath: absolute path of a local file. Only files inside the folders this server may read are allowed: the workspace folders your MCP client shares (roots) and the folders in ' +
+          UPLOAD_DIRS_ENV +
+          '. Hidden files and folders (names starting with ".") are refused. With Docker, the path must be inside a mounted folder listed in ' +
+          UPLOAD_DIRS_ENV +
+          '.\n' +
+          '- content + fileName: text you write yourself (log excerpt, repro steps), stored as a file named fileName.\n' +
+          'The P4 Plan server limits size and blocks some file types. If a file with the same name exists, the server adds "name (1)". The first image attached becomes the cover image. Uploads run one at a time and are limited per minute (every upload sent to the server counts, also ones it rejects); if the limit is reached, wait instead of retrying. ' +
+          'Returns the attachment path for download_attachment, delete_attachment and set_cover_image.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            taskId: {
+              type: 'string',
+              description: 'The ID of the item to attach the file to',
+            },
+            filePath: {
+              type: 'string',
+              description:
+                'Absolute path of the local file to upload (inside an allowed folder). Leave out when using content.',
+            },
+            content: {
+              type: 'string',
+              description:
+                'Text to upload as a file instead of a local file. Requires fileName.',
+            },
+            fileName: {
+              type: 'string',
+              description:
+                'Name for the attachment, e.g. "crash.log". Required with content; with filePath it defaults to the file\'s own name.',
+            },
+          },
+          required: ['taskId'],
+        },
+        annotations: writeAnnotations({
+          destructive: false,
+          idempotent: false,
+        }),
+      },
+      handler: (args, authToken, context) =>
+        this.uploadAttachment(args, authToken, context),
     });
 
     // delete_attachment
@@ -361,6 +442,184 @@ export class TaskCommentsTools extends TaskToolsBase {
             taskName: result.item.name,
             count: attachments.length,
             attachments,
+          }),
+        },
+      ],
+    };
+  }
+
+  private async listAttachments(
+    taskId: string,
+    authToken: string,
+  ): Promise<Attachment[]> {
+    const result = await this.graphqlClient.query<{
+      item: { attachments?: Attachment[] | null };
+    }>(GET_ATTACHMENTS_QUERY, { id: taskId }, authToken);
+    return result.item.attachments ?? [];
+  }
+
+  private async uploadAttachment(
+    args: Record<string, unknown>,
+    authToken: string,
+    context?: ToolCallContext,
+  ): Promise<McpToolResult> {
+    validateRequired(args, ['taskId'], 'upload_attachment');
+    // Models often write "#145202"; the ID itself must be a number.
+    const taskId = String(args.taskId).trim().replace(/^#\s*/, '');
+    if (!/^\d+$/.test(taskId)) {
+      throw new Error(
+        `upload_attachment: 'taskId' must be the item's numeric ID, e.g. "145202" (got ${JSON.stringify(args.taskId)}).`,
+      );
+    }
+    const filePath = typeof args.filePath === 'string' ? args.filePath : '';
+    const content = typeof args.content === 'string' ? args.content : '';
+    const rawFileName = typeof args.fileName === 'string' ? args.fileName : '';
+
+    if (filePath.trim() !== '' && content !== '') {
+      throw new Error(
+        "upload_attachment: give either 'filePath' (a local file) or 'content' + 'fileName' (text), not both.",
+      );
+    }
+    if (
+      filePath.trim() === '' &&
+      typeof args.content === 'string' &&
+      content === ''
+    ) {
+      throw new Error(
+        "upload_attachment: 'content' is empty. P4 Plan cannot store empty attachments; write the text to attach in 'content'.",
+      );
+    }
+    if (filePath.trim() === '' && content === '') {
+      throw new Error(
+        "upload_attachment: give 'filePath' (absolute path of a local file) or 'content' + 'fileName' (text to store as a file).",
+      );
+    }
+    if (content !== '' && rawFileName.trim() === '') {
+      throw new Error(
+        'upload_attachment: \'fileName\' is required with \'content\', e.g. "crash.log" or "repro-steps.txt".',
+      );
+    }
+
+    // One upload at a time, so parallel calls do not hit the API together
+    // and each call's before/after attachment lists only see its own upload.
+    return this.uploadGate.run(() =>
+      this.sendUpload(
+        taskId,
+        filePath,
+        content,
+        rawFileName,
+        authToken,
+        context,
+      ),
+    );
+  }
+
+  private async sendUpload(
+    taskId: string,
+    filePath: string,
+    content: string,
+    rawFileName: string,
+    authToken: string,
+    context?: ToolCallContext,
+  ): Promise<McpToolResult> {
+    this.uploadGate.check();
+
+    // Fail on a wrong item ID before reading or sending anything.
+    const before = await this.listAttachments(taskId, authToken);
+
+    let source: UploadSource;
+    let close = async (): Promise<void> => {};
+    if (content !== '') {
+      const fileName = validateAttachmentFileName(rawFileName);
+      const data = Buffer.from(content, 'utf-8');
+      source = {
+        fileName,
+        mimeType: this.getMimeType(fileName),
+        size: data.length,
+        data,
+      };
+    } else {
+      let clientRoots: string[] = [];
+      try {
+        clientRoots = (await context?.listRoots?.()) ?? [];
+      } catch {
+        // The client could not list its roots; only P4PLAN_UPLOAD_DIRS apply.
+      }
+      const roots = await allowedUploadRoots(clientRoots, this.uploadDirs);
+      const file = await openUploadFile(filePath, roots);
+      close = () => file.handle.close();
+      try {
+        if (file.size === 0) {
+          throw new Error(
+            `upload_attachment: "${file.name}" is empty (0 bytes). P4 Plan cannot store empty attachments; tell the user.`,
+          );
+        }
+        const fileName = validateAttachmentFileName(rawFileName || file.name);
+        source = {
+          fileName,
+          mimeType: this.getMimeType(fileName),
+          size: file.size,
+          data: file.handle.createReadStream({
+            start: 0,
+            end: file.size - 1,
+            autoClose: false,
+          }),
+        };
+      } catch (error) {
+        await close();
+        throw error;
+      }
+    }
+
+    let p4PlanPath: string | undefined;
+    try {
+      this.uploadGate.take();
+      ({ p4PlanPath } = await this.graphqlClient.uploadAttachment(
+        taskId,
+        source,
+        authToken,
+      ));
+    } finally {
+      await close();
+    }
+
+    const known = new Set(before.map((attachment) => attachment.path));
+    const added = (await this.listAttachments(taskId, authToken)).filter(
+      (attachment) => !known.has(attachment.path),
+    );
+    if (added.length !== 1) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              taskId,
+              fileName: source.fileName,
+              size: source.size,
+              p4PlanPath,
+              note: 'Uploaded. Call get_attachments to see the attachment path.',
+            }),
+          },
+        ],
+      };
+    }
+
+    const attachment = added[0];
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            taskId,
+            path: attachment.path,
+            size: attachment.size,
+            coverImage: attachment.coverImage,
+            renamed:
+              attachment.path.split('/').pop() !== source.fileName
+                ? `A file named "${source.fileName}" already existed, so the server stored this one as "${attachment.path.split('/').pop()}".`
+                : undefined,
           }),
         },
       ],
