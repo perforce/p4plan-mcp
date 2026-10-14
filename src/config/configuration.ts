@@ -40,9 +40,7 @@ export default () => ({
   readOnly:
     parseReadOnlyEnv(process.env.P4PLAN_READONLY).readOnly ||
     process.argv.slice(2).includes(READ_ONLY_ARG),
-  // Extra folders upload_attachment may read, besides the client's roots.
   uploadDirs: parseUploadDirs(process.env.P4PLAN_UPLOAD_DIRS),
-  // Most uploads one MCP client may start per minute (0 = no limit).
   uploadsPerMinute: parseUploadsPerMinute(
     process.env.P4PLAN_UPLOADS_PER_MINUTE,
   ),

@@ -61,6 +61,7 @@ The **To Do List** (get_my_tasks) shows all tasks, items, and bugs assigned to t
 - Pass `filePath` for a file on disk (screenshot, log, PDF). It must be inside a folder the server may read: the client's workspace folders or `P4PLAN_UPLOAD_DIRS`. If the tool says the file is outside those folders, tell the user rather than copying the file somewhere yourself.
 - Pass `content` + `fileName` for text you write yourself, such as a log excerpt or repro steps.
 - The tool returns the new attachment `path`. If the name was taken, the server stores the file as `name (1).ext`; after a timeout, call `get_attachments` before retrying so you don't upload it twice.
+- To show an image inside a comment or multiline field, upload it to the same item first, then put the returned `imageHtml` in the HTML (see the comment-html-format skill).
 - Uploads run one at a time and are limited per minute. If the tool says the limit is reached, wait the time it gives; don't retry in a loop.
 
 ## Committed Items

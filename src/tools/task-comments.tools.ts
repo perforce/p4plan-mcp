@@ -42,6 +42,60 @@ interface Attachment {
   date: string;
 }
 
+interface UploadRequest {
+  taskId: string;
+  fileName: string;
+  filePath?: string;
+  content?: string;
+}
+
+function parseUploadArgs(args: Record<string, unknown>): UploadRequest {
+  validateRequired(args, ['taskId'], 'upload_attachment');
+  const taskId = String(args.taskId).trim().replace(/^#\s*/, '');
+  if (!/^\d+$/.test(taskId)) {
+    throw new Error(
+      `upload_attachment: 'taskId' must be the item's numeric ID, e.g. "145202" (got ${JSON.stringify(args.taskId)}).`,
+    );
+  }
+  const filePath =
+    typeof args.filePath === 'string' ? args.filePath.trim() : '';
+  const content = typeof args.content === 'string' ? args.content : undefined;
+  const fileName = typeof args.fileName === 'string' ? args.fileName : '';
+
+  if (filePath !== '') {
+    if (content) {
+      throw new Error(
+        "upload_attachment: give either 'filePath' (a local file) or 'content' + 'fileName' (text), not both.",
+      );
+    }
+    return { taskId, filePath, fileName };
+  }
+  if (content === undefined) {
+    throw new Error(
+      "upload_attachment: give 'filePath' (absolute path of a local file) or 'content' + 'fileName' (text to store as a file).",
+    );
+  }
+  if (content === '') {
+    throw new Error(
+      "upload_attachment: 'content' is empty. P4 Plan cannot store empty attachments; write the text to attach in 'content'.",
+    );
+  }
+  if (fileName.trim() === '') {
+    throw new Error(
+      'upload_attachment: \'fileName\' is required with \'content\', e.g. "crash.log" or "repro-steps.txt".',
+    );
+  }
+  return { taskId, content, fileName };
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /**
  * Task Comments & Attachments Tools
  *
@@ -191,7 +245,8 @@ export class TaskCommentsTools extends TaskToolsBase {
           '.\n' +
           '- content + fileName: text you write yourself (log excerpt, repro steps), stored as a file named fileName.\n' +
           'The P4 Plan server limits size and blocks some file types. If a file with the same name exists, the server adds "name (1)". The first image attached becomes the cover image. Uploads run one at a time and are limited per minute (every upload sent to the server counts, also ones it rejects); if the limit is reached, wait instead of retrying. ' +
-          'Returns the attachment path for download_attachment, delete_attachment and set_cover_image.',
+          'Returns the attachment path for download_attachment, delete_attachment and set_cover_image. ' +
+          'For images it also returns imageHtml, an <img> tag that shows the image inline when put in a comment, detailedDescription, stepsToReproduce or Multiline Text field of the same item.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -417,17 +472,7 @@ export class TaskCommentsTools extends TaskToolsBase {
       item: {
         id: string;
         name: string;
-        attachments?: Array<{
-          id: string;
-          path: string;
-          size: number;
-          version: number;
-          imageWidth?: number;
-          imageHeight?: number;
-          coverImage: boolean;
-          addedBy: { id: string; name: string };
-          date: string;
-        }>;
+        attachments?: Attachment[];
       };
     }>(GET_ATTACHMENTS_QUERY, { id: taskId }, authToken);
 
@@ -463,113 +508,21 @@ export class TaskCommentsTools extends TaskToolsBase {
     authToken: string,
     context?: ToolCallContext,
   ): Promise<McpToolResult> {
-    validateRequired(args, ['taskId'], 'upload_attachment');
-    // Models often write "#145202"; the ID itself must be a number.
-    const taskId = String(args.taskId).trim().replace(/^#\s*/, '');
-    if (!/^\d+$/.test(taskId)) {
-      throw new Error(
-        `upload_attachment: 'taskId' must be the item's numeric ID, e.g. "145202" (got ${JSON.stringify(args.taskId)}).`,
-      );
-    }
-    const filePath = typeof args.filePath === 'string' ? args.filePath : '';
-    const content = typeof args.content === 'string' ? args.content : '';
-    const rawFileName = typeof args.fileName === 'string' ? args.fileName : '';
-
-    if (filePath.trim() !== '' && content !== '') {
-      throw new Error(
-        "upload_attachment: give either 'filePath' (a local file) or 'content' + 'fileName' (text), not both.",
-      );
-    }
-    if (
-      filePath.trim() === '' &&
-      typeof args.content === 'string' &&
-      content === ''
-    ) {
-      throw new Error(
-        "upload_attachment: 'content' is empty. P4 Plan cannot store empty attachments; write the text to attach in 'content'.",
-      );
-    }
-    if (filePath.trim() === '' && content === '') {
-      throw new Error(
-        "upload_attachment: give 'filePath' (absolute path of a local file) or 'content' + 'fileName' (text to store as a file).",
-      );
-    }
-    if (content !== '' && rawFileName.trim() === '') {
-      throw new Error(
-        'upload_attachment: \'fileName\' is required with \'content\', e.g. "crash.log" or "repro-steps.txt".',
-      );
-    }
-
-    // One upload at a time, so parallel calls do not hit the API together
-    // and each call's before/after attachment lists only see its own upload.
+    const request = parseUploadArgs(args);
     return this.uploadGate.run(() =>
-      this.sendUpload(
-        taskId,
-        filePath,
-        content,
-        rawFileName,
-        authToken,
-        context,
-      ),
+      this.sendUpload(request, authToken, context),
     );
   }
 
   private async sendUpload(
-    taskId: string,
-    filePath: string,
-    content: string,
-    rawFileName: string,
+    request: UploadRequest,
     authToken: string,
     context?: ToolCallContext,
   ): Promise<McpToolResult> {
+    const { taskId } = request;
     this.uploadGate.check();
-
-    // Fail on a wrong item ID before reading or sending anything.
     const before = await this.listAttachments(taskId, authToken);
-
-    let source: UploadSource;
-    let close = async (): Promise<void> => {};
-    if (content !== '') {
-      const fileName = validateAttachmentFileName(rawFileName);
-      const data = Buffer.from(content, 'utf-8');
-      source = {
-        fileName,
-        mimeType: this.getMimeType(fileName),
-        size: data.length,
-        data,
-      };
-    } else {
-      let clientRoots: string[] = [];
-      try {
-        clientRoots = (await context?.listRoots?.()) ?? [];
-      } catch {
-        // The client could not list its roots; only P4PLAN_UPLOAD_DIRS apply.
-      }
-      const roots = await allowedUploadRoots(clientRoots, this.uploadDirs);
-      const file = await openUploadFile(filePath, roots);
-      close = () => file.handle.close();
-      try {
-        if (file.size === 0) {
-          throw new Error(
-            `upload_attachment: "${file.name}" is empty (0 bytes). P4 Plan cannot store empty attachments; tell the user.`,
-          );
-        }
-        const fileName = validateAttachmentFileName(rawFileName || file.name);
-        source = {
-          fileName,
-          mimeType: this.getMimeType(fileName),
-          size: file.size,
-          data: file.handle.createReadStream({
-            start: 0,
-            end: file.size - 1,
-            autoClose: false,
-          }),
-        };
-      } catch (error) {
-        await close();
-        throw error;
-      }
-    }
+    const { source, close } = await this.openUploadSource(request, context);
 
     let p4PlanPath: string | undefined;
     try {
@@ -587,25 +540,10 @@ export class TaskCommentsTools extends TaskToolsBase {
     const added = (await this.listAttachments(taskId, authToken)).filter(
       (attachment) => !known.has(attachment.path),
     );
-    if (added.length !== 1) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              success: true,
-              taskId,
-              fileName: source.fileName,
-              size: source.size,
-              p4PlanPath,
-              note: 'Uploaded. Call get_attachments to see the attachment path.',
-            }),
-          },
-        ],
-      };
-    }
+    const attachment = added.length === 1 ? added[0] : undefined;
+    const storedName = attachment?.path.split('/').pop();
+    const isImage = source.mimeType.startsWith('image/');
 
-    const attachment = added[0];
     return {
       content: [
         {
@@ -613,17 +551,77 @@ export class TaskCommentsTools extends TaskToolsBase {
           text: JSON.stringify({
             success: true,
             taskId,
-            path: attachment.path,
-            size: attachment.size,
-            coverImage: attachment.coverImage,
+            fileName: source.fileName,
+            path: attachment?.path,
+            size: attachment?.size ?? source.size,
+            coverImage: attachment?.coverImage,
             renamed:
-              attachment.path.split('/').pop() !== source.fileName
-                ? `A file named "${source.fileName}" already existed, so the server stored this one as "${attachment.path.split('/').pop()}".`
+              storedName && storedName !== source.fileName
+                ? `A file named "${source.fileName}" already existed, so the server stored this one as "${storedName}".`
                 : undefined,
+            p4PlanPath,
+            imageHtml:
+              isImage && p4PlanPath
+                ? `<img src="${escapeHtmlAttribute(p4PlanPath)}">`
+                : undefined,
+            note: attachment
+              ? undefined
+              : 'Uploaded. Call get_attachments to see the attachment path.',
           }),
         },
       ],
     };
+  }
+
+  private async openUploadSource(
+    request: UploadRequest,
+    context?: ToolCallContext,
+  ): Promise<{ source: UploadSource; close: () => Promise<void> }> {
+    if (request.content !== undefined) {
+      const fileName = validateAttachmentFileName(request.fileName);
+      const data = Buffer.from(request.content, 'utf-8');
+      return {
+        source: {
+          fileName,
+          mimeType: this.getMimeType(fileName),
+          size: data.length,
+          data,
+        },
+        close: () => Promise.resolve(),
+      };
+    }
+
+    const clientRoots = (await context?.listRoots?.().catch(() => [])) ?? [];
+    const file = await openUploadFile(
+      request.filePath ?? '',
+      await allowedUploadRoots(clientRoots, this.uploadDirs),
+    );
+    try {
+      if (file.size === 0) {
+        throw new Error(
+          `upload_attachment: "${file.name}" is empty (0 bytes). P4 Plan cannot store empty attachments; tell the user.`,
+        );
+      }
+      const fileName = validateAttachmentFileName(
+        request.fileName || file.name,
+      );
+      return {
+        source: {
+          fileName,
+          mimeType: this.getMimeType(fileName),
+          size: file.size,
+          data: file.handle.createReadStream({
+            start: 0,
+            end: file.size - 1,
+            autoClose: false,
+          }),
+        },
+        close: () => file.handle.close(),
+      };
+    } catch (error) {
+      await file.handle.close();
+      throw error;
+    }
   }
 
   private async downloadAttachmentFile(

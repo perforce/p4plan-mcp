@@ -265,6 +265,8 @@ With Docker the container cannot see your files: mount a folder and point `P4PLA
 
 The file is streamed to the P4 Plan API (`POST /attachment/<id>/upload`), so its content never passes through the model. The P4 Plan server's own limits apply: its attachment size limit and blocked file types. If a file with the same name is already attached, the server stores the new one as `name (1).ext`. If an upload times out it may still have completed, so check `get_attachments` before retrying.
 
+To show an image inside a comment or a multiline field (bug description, steps to reproduce, Multiline Text columns), upload it to the same item and put the returned `imageHtml` (`<img src="hansoft://...">`) in the HTML. This is how the P4 Plan clients embed pasted images; the server turns images with any other `src` into plain links.
+
 So that one client cannot flood the P4 Plan API (a model stuck in a loop, or a prompt injection asking for many files), each MCP server runs its uploads one at a time and starts at most `P4PLAN_UPLOADS_PER_MINUTE` uploads per minute (default 20, `0` for no limit). Further calls get an error saying how long to wait.
 
 Every tool publishes MCP tool annotations. `readOnlyHint` marks the tools that only read; tools that write also carry `destructiveHint` (the call deletes or overwrites data) and `idempotentHint`. Clients that support annotations can use them to ask for confirmation before a write.
@@ -543,6 +545,7 @@ Tool arguments are parsed leniently, so less capable models succeed more often. 
 - **Parameters**: `taskId`, and either `filePath` (optionally `fileName` to rename it) or `content` + `fileName`
 - Local files must be inside an allowed folder, see [Uploading files](#uploading-files)
 - Returns the new attachment `path`; the first image attached becomes the cover image
+- For images it also returns `imageHtml`, an `<img>` tag that shows the image inside a comment, description, steps to reproduce or Multiline Text field of the same item
 - **Use cases**: Attach screenshots, logs or repro files to bug reports and user stories
 
 </details>

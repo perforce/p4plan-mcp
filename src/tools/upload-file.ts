@@ -2,12 +2,9 @@
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
 /**
- * Which local files upload_attachment may read. Reading local files is a new
- * way for data to leave the machine (a prompt injection could ask for
- * ~/.ssh/id_rsa), so only files inside allowed folders are read: the MCP
- * client's roots plus P4PLAN_UPLOAD_DIRS. Symlinks are resolved before the
- * check, hidden files and folders are refused, and only regular files are
- * opened (a device or FIFO would stream forever, and there is no size limit).
+ * Which local files upload_attachment may read. A prompt injection could ask
+ * for something like ~/.ssh/id_rsa, so only regular, non-hidden files inside
+ * the client's roots or P4PLAN_UPLOAD_DIRS are read, after resolving symlinks.
  */
 
 import { constants, promises as fs } from 'node:fs';
@@ -16,17 +13,16 @@ import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** Environment variable listing extra folders upload_attachment may read. */
 export const UPLOAD_DIRS_ENV = 'P4PLAN_UPLOAD_DIRS';
 
 export interface OpenedUploadFile {
   handle: FileHandle;
   size: number;
-  /** File name from the path the caller gave (before resolving symlinks). */
+  /** Name from the path the caller gave, before resolving symlinks. */
   name: string;
 }
 
-/** Turn a file:// URI, ~ path or quoted path into a plain path string. */
+/** Turn a file:// URI, ~ path or quoted path into a plain path. */
 function normalisePathInput(raw: string): string {
   let value = raw
     .trim()
@@ -48,7 +44,14 @@ function normalisePathInput(raw: string): string {
   return value;
 }
 
-/** Split P4PLAN_UPLOAD_DIRS on the OS path-list separator (":" or ";"). */
+function fileUriToPath(uri: string): string | null {
+  try {
+    return fileURLToPath(uri);
+  } catch {
+    return null;
+  }
+}
+
 export function parseUploadDirs(value: string | undefined): string[] {
   return (value ?? '')
     .split(path.delimiter)
@@ -56,34 +59,22 @@ export function parseUploadDirs(value: string | undefined): string[] {
     .filter((dir) => dir !== '');
 }
 
-/**
- * The folders uploads may come from: client roots (file:// URIs) plus the
- * configured folders, each resolved to its real path. Folders that do not
- * exist, and roots that are not file:// URIs, are dropped.
- */
+/** Real paths of the client roots and configured folders that exist. */
 export async function allowedUploadRoots(
   clientRootUris: string[],
   uploadDirs: string[],
 ): Promise<string[]> {
-  const candidates: string[] = [];
-  for (const uri of clientRootUris) {
-    try {
-      candidates.push(fileURLToPath(uri));
-    } catch {
-      // Not a file:// root; nothing on disk to allow.
-    }
-  }
-  candidates.push(...uploadDirs.filter((dir) => path.isAbsolute(dir)));
+  const candidates = [
+    ...clientRootUris.map(fileUriToPath),
+    ...uploadDirs.filter((dir) => path.isAbsolute(dir)),
+  ].filter((dir): dir is string => dir !== null);
 
   const roots: string[] = [];
   for (const candidate of candidates) {
-    try {
-      const real = await fs.realpath(candidate);
-      if ((await fs.stat(real)).isDirectory() && !roots.includes(real)) {
-        roots.push(real);
-      }
-    } catch {
-      // Missing or unreadable folder.
+    const real = await fs.realpath(candidate).catch(() => null);
+    const stats = real ? await fs.stat(real).catch(() => null) : null;
+    if (real && stats?.isDirectory() && !roots.includes(real)) {
+      roots.push(real);
     }
   }
   return roots;
@@ -91,9 +82,7 @@ export async function allowedUploadRoots(
 
 /**
  * Path segments of `target` below `root`, or null when it is not inside.
- * Both are real paths, which carry the case stored on disk, so they are
- * compared exactly (ignoring case would let "work" pass for root "Work" on a
- * case-sensitive volume).
+ * Real paths carry the case stored on disk, so they are compared exactly.
  */
 function segmentsBelow(root: string, target: string): string[] | null {
   const relative = path.relative(root, target);
@@ -109,24 +98,21 @@ function segmentsBelow(root: string, target: string): string[] | null {
 }
 
 /**
- * Real path of a missing file: its nearest existing parent, resolved. Null
- * when the path runs through a broken symlink, whose target (possibly
- * outside the folders) is unknown.
+ * Real path of a missing file, from its nearest existing parent. Null when
+ * the path runs through a broken symlink, whose target is unknown.
  */
 async function realpathOfNearestParent(target: string): Promise<string | null> {
   const rest: string[] = [];
   let current = path.resolve(target);
   for (;;) {
-    try {
-      return path.join(await fs.realpath(current), ...rest);
-    } catch {
-      const link = await fs.lstat(current).catch(() => null);
-      if (link?.isSymbolicLink()) return null;
-      const parent = path.dirname(current);
-      if (parent === current) return path.resolve(target);
-      rest.unshift(path.basename(current));
-      current = parent;
-    }
+    const real = await fs.realpath(current).catch(() => null);
+    if (real) return path.join(real, ...rest);
+    const link = await fs.lstat(current).catch(() => null);
+    if (link?.isSymbolicLink()) return null;
+    const parent = path.dirname(current);
+    if (parent === current) return path.resolve(target);
+    rest.unshift(path.basename(current));
+    current = parent;
   }
 }
 
@@ -169,13 +155,14 @@ export async function openUploadFile(
       `upload_attachment: "${input}" is outside the folders this MCP server may read (${describeRoots(roots)}). ` +
         `Tell the user; do not copy or move the file to get around this. If they want files from that folder, they can add it to ${UPLOAD_DIRS_ENV}.`,
     );
+  const notAFileError = () =>
+    new Error(
+      `upload_attachment: "${input}" is not a regular file. Only files can be uploaded.`,
+    );
 
-  let real: string;
-  try {
-    real = await fs.realpath(input);
-  } catch {
-    // Same answer as for an existing file outside the folders, so the tool
-    // does not reveal which files exist elsewhere.
+  const real = await fs.realpath(input).catch(() => null);
+  if (real === null) {
+    // Same error as for existing files, so the tool cannot reveal what exists.
     const resolved = await realpathOfNearestParent(input);
     if (
       resolved === null ||
@@ -188,41 +175,29 @@ export async function openUploadFile(
     );
   }
 
-  const insideSomeRoot = roots
+  const placements = roots
     .map((root) => segmentsBelow(root, real))
     .filter((segments): segments is string[] => segments !== null);
-  if (insideSomeRoot.length === 0) throw outsideError();
-  if (
-    insideSomeRoot.every((segments) => segments.some((s) => s.startsWith('.')))
-  ) {
+  if (placements.length === 0) throw outsideError();
+  if (placements.every((segments) => segments.some((s) => s.startsWith('.')))) {
     throw new Error(
       `upload_attachment: "${input}" is a hidden file or inside a hidden folder (a name starting with "."), which is never uploaded because such files often hold credentials or settings. ` +
         `Tell the user; do not copy or rename the file to get around this.`,
     );
   }
 
-  // Refuse devices, FIFOs and folders before opening (opening a FIFO blocks).
-  const stats = await fs.stat(real);
-  if (!stats.isFile()) {
-    throw new Error(
-      `upload_attachment: "${input}" is not a regular file. Only files can be uploaded.`,
-    );
-  }
-
-  const flags =
+  // Opening a FIFO blocks, so check the type before opening as well as after.
+  if (!(await fs.stat(real)).isFile()) throw notAFileError();
+  const handle = await fs.open(
+    real,
     constants.O_RDONLY |
-    (constants.O_NOFOLLOW ?? 0) |
-    (constants.O_NONBLOCK ?? 0);
-  const handle = await fs.open(real, flags);
+      (constants.O_NOFOLLOW ?? 0) |
+      (constants.O_NONBLOCK ?? 0),
+  );
   try {
     const opened = await handle.stat();
-    if (!opened.isFile()) {
-      throw new Error(
-        `upload_attachment: "${input}" is not a regular file. Only files can be uploaded.`,
-      );
-    }
-    // A hard link looks like a normal file but may share its content with a
-    // file outside the folders or a hidden one, so only single links are read.
+    if (!opened.isFile()) throw notAFileError();
+    // A hard link can share its content with a file outside the folders.
     if (opened.nlink > 1) {
       throw new Error(
         `upload_attachment: "${input}" is a hard link to another file, which is not uploaded. Tell the user; do not copy the file to get around this.`,
@@ -236,8 +211,8 @@ export async function openUploadFile(
 }
 
 /**
- * Validate the attachment file name. The server keeps only the part after
- * the last slash, so slashes would silently change the name.
+ * Validate an attachment file name. The server keeps only the part after the
+ * last slash, so names with folders are refused rather than silently changed.
  */
 export function validateAttachmentFileName(fileName: string): string {
   const name = fileName.trim();

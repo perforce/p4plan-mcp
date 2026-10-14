@@ -90,9 +90,8 @@ export interface UploadSource {
 }
 
 /**
- * filename parameters for a multipart part. The API's multer reads a plain
- * filename as latin1, so non-ASCII names also go in filename* (RFC 5987),
- * which it prefers.
+ * filename parameters for a multipart part. The API reads a plain filename
+ * as latin1, so non-ASCII names also go in filename* (RFC 5987).
  */
 export function contentDispositionFileName(fileName: string): string {
   const ascii = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_');
@@ -104,7 +103,6 @@ export function contentDispositionFileName(fileName: string): string {
   return `filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-/** The message from a Nest error body ({statusCode, message, error}). */
 function restErrorText(data: unknown): string | undefined {
   if (data && typeof data === 'object' && 'message' in data) {
     const message = (data as { message: unknown }).message;
@@ -114,15 +112,15 @@ function restErrorText(data: unknown): string | undefined {
   return undefined;
 }
 
-/** Fix-it message for a failed upload, by HTTP status. */
 function uploadErrorMessage(error: AxiosError, id: string): string {
   const status = error.response?.status;
   const serverText = restErrorText(error.response?.data);
   switch (status) {
-    case 400:
     case 413:
-      if (status === 413 || /size/i.test(serverText ?? '')) {
-        return `Upload rejected: the file is larger than the attachment size limit of this P4 Plan server (set by its administrator). Server said: ${serverText ?? 'too large'}.`;
+      return `Upload rejected: the file is larger than the attachment size limit of this P4 Plan server (set by its administrator).`;
+    case 400:
+      if (/size/i.test(serverText ?? '')) {
+        return `Upload rejected: the file is larger than the attachment size limit of this P4 Plan server (set by its administrator). Server said: ${serverText}.`;
       }
       if (/type/i.test(serverText ?? '')) {
         return `Upload rejected: this file type is blocked by the P4 Plan server (its administrator controls the blocked extensions). Server said: ${serverText}. Try another format the user agrees to (e.g. .jpg instead of .png), or tell the user to ask a P4 Plan administrator.`;
@@ -454,16 +452,14 @@ export class GraphQLClientService implements OnModuleInit {
   }
 
   /**
-   * Upload a file as an attachment through the P4 Plan REST API
-   * (POST /attachment/:itemID/upload, multipart with one part named "file").
-   * The body is streamed, so the file is never held in memory here.
+   * Upload a file as an attachment (POST /attachment/:itemID/upload, a
+   * multipart body with one part named "file"). The body is streamed.
    */
   async uploadAttachment(
     itemId: string,
     file: UploadSource,
     authToken: string,
   ): Promise<{ p4PlanPath?: string }> {
-    // The REST call does not go through query(), so it needs its own check.
     if (this.readOnly) {
       throw new Error(
         'Blocked an attachment upload: this P4 Plan MCP server is running in read-only mode (--readonly / P4PLAN_READONLY), so nothing can be created, updated or deleted.',
@@ -493,7 +489,6 @@ export class GraphQLClientService implements OnModuleInit {
       })(),
     );
 
-    // Metadata only: the file content is never logged.
     this.logger.debug?.(
       `Uploading attachment: itemId=${id}, fileName=${file.fileName}, size=${file.size}`,
       GraphQLClientService.name,
@@ -510,10 +505,7 @@ export class GraphQLClientService implements OnModuleInit {
               'Content-Type': `multipart/form-data; boundary=${boundary}`,
               'Content-Length': String(head.length + file.size + tail.length),
             },
-            // Following redirects makes axios keep a copy of the whole body
-            // (capped at 10 MB) so it can resend it; a stream cannot be
-            // resent anyway. Without it the body streams and only the P4
-            // Plan server's own attachment size limit applies.
+            // With redirects on, axios buffers the whole body (max 10 MB).
             maxRedirects: 0,
             maxBodyLength: Infinity,
           },

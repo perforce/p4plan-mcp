@@ -189,9 +189,7 @@ describe('upload-file', () => {
     });
 
     it('compares folder names exactly, not ignoring case', async () => {
-      // On a case-insensitive volume "ROOT" is the same folder as "root" and
-      // realpath returns the stored name; on a case-sensitive one it is a
-      // different folder. Either way a different-case sibling is not inside.
+      // On a case-insensitive volume the lower-case folder is the same one.
       const upper = join(base, 'Root2');
       const lower = join(base, 'root2');
       mkdirSync(upper);

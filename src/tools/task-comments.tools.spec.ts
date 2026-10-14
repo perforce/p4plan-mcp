@@ -513,6 +513,43 @@ describe('TaskCommentsTools', () => {
       expect(parseToolResult(result)).toMatchObject({ coverImage: true });
     });
 
+    it('returns an <img> tag for images so they can be shown inline', async () => {
+      mockGraphqlClient.query
+        .mockResolvedValueOnce({ item: { attachments: [] } })
+        .mockResolvedValueOnce({
+          item: { attachments: [attachment('Att/bug.png', true)] },
+        });
+      mockGraphqlClient.uploadAttachment = jest.fn().mockResolvedValue({
+        p4PlanPath: 'hansoft://host/DocumentID/7?db=a"b&dbid=1',
+      });
+
+      const result = parseToolResult(
+        await upload({ taskId: '42', filePath: join(dir, 'shots', 'bug.png') }),
+      );
+
+      expect(result).toMatchObject({
+        path: 'Att/bug.png',
+        p4PlanPath: 'hansoft://host/DocumentID/7?db=a"b&dbid=1',
+        imageHtml:
+          '<img src="hansoft://host/DocumentID/7?db=a&quot;b&amp;dbid=1">',
+      });
+    });
+
+    it('returns no <img> tag for files that are not images', async () => {
+      mockGraphqlClient.query
+        .mockResolvedValueOnce({ item: { attachments: [] } })
+        .mockResolvedValueOnce({
+          item: { attachments: [attachment('Att/crash.log')] },
+        });
+
+      const result = parseToolResult(
+        await upload({ taskId: '42', content: 'x', fileName: 'crash.log' }),
+      );
+
+      expect(result.p4PlanPath).toBe('hansoft://server/DocumentID/1');
+      expect(result.imageHtml).toBeUndefined();
+    });
+
     it('also accepts files inside the client roots', async () => {
       const other = mkdtempSync(join(tmpdir(), 'p4plan-upload-root-'));
       writeFileSync(join(other, 'notes.txt'), 'notes');

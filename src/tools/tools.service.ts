@@ -36,9 +36,7 @@ export interface McpToolResult {
   isError?: boolean;
 }
 
-/**
- * Per-call context from the MCP session.
- */
+/** Per-call context from the MCP session. */
 export interface ToolCallContext {
   /** The client's roots (file:// URIs); [] when the client shares none. */
   listRoots?: () => Promise<string[]>;
