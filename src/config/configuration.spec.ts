@@ -125,6 +125,12 @@ describe('parseUploadDirs', () => {
     ]);
     expect(parseUploadDirs(undefined)).toEqual([]);
   });
+
+  it('keeps file:// entries as they are instead of converting them', () => {
+    expect(parseUploadDirs('file:///uploads')).toEqual(
+      'file:///uploads'.split(delimiter),
+    );
+  });
 });
 
 describe('normaliseUploadPath', () => {

@@ -33,21 +33,12 @@ export function parseReadOnlyEnv(value: string | undefined): {
 
 export const UPLOAD_DIRS_ENV = 'P4PLAN_UPLOAD_DIRS';
 
-/** Turn a file:// URI, ~ path or quoted path into a plain path. */
-export function normaliseUploadPath(raw: string): string {
-  let value = raw
+/** Strip quotes around a path and expand a leading ~. */
+function expandPath(raw: string): string {
+  const value = raw
     .trim()
     .replace(/^(["'`])(.*)\1$/s, '$2')
     .trim();
-  if (/^file:\/\//i.test(value)) {
-    try {
-      value = fileURLToPath(value);
-    } catch {
-      throw new Error(
-        `upload_attachment: "${raw}" is not a valid file:// URI. Pass an absolute file path instead.`,
-      );
-    }
-  }
   if (value === '~') return homedir();
   if (value.startsWith('~/') || value.startsWith('~\\')) {
     return path.join(homedir(), value.slice(2));
@@ -55,10 +46,24 @@ export function normaliseUploadPath(raw: string): string {
   return value;
 }
 
+/** Turn a file:// URI, ~ path or quoted path into a plain path. */
+export function normaliseUploadPath(raw: string): string {
+  const value = expandPath(raw);
+  if (!/^file:\/\//i.test(value)) return value;
+  try {
+    return fileURLToPath(value);
+  } catch {
+    throw new Error(
+      `upload_attachment: "${raw}" is not a valid file:// URI. Pass an absolute file path instead.`,
+    );
+  }
+}
+
+/** Plain paths only: a file:// URI would be split apart on ":". */
 export function parseUploadDirs(value: string | undefined): string[] {
   return (value ?? '')
     .split(path.delimiter)
-    .map((dir) => normaliseUploadPath(dir))
+    .map(expandPath)
     .filter((dir) => dir !== '');
 }
 
