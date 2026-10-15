@@ -22,13 +22,14 @@ import {
   UPDATE_COMMENT_MUTATION,
   DELETE_COMMENT_MUTATION,
 } from '../graphql';
+import { UPLOAD_DIRS_ENV } from '../config/configuration';
 import {
-  UPLOAD_DIRS_ENV,
   allowedUploadRoots,
   openUploadFile,
+  unusableUploadDirs,
   validateAttachmentFileName,
 } from './upload-file';
-import { DEFAULT_UPLOADS_PER_MINUTE, UploadGate } from './upload-gate';
+import { UPLOADS_PER_MINUTE, UploadGate } from './upload-gate';
 
 interface Attachment {
   id: string;
@@ -113,7 +114,7 @@ function escapeHtmlAttribute(value: string): string {
 @Injectable()
 export class TaskCommentsTools extends TaskToolsBase {
   private readonly uploadDirs: string[];
-  private readonly uploadGate: UploadGate;
+  private readonly uploadGate = new UploadGate();
 
   constructor(
     graphqlClient: GraphQLClientService,
@@ -121,10 +122,6 @@ export class TaskCommentsTools extends TaskToolsBase {
   ) {
     super(graphqlClient);
     this.uploadDirs = configService?.get<string[]>('uploadDirs') ?? [];
-    this.uploadGate = new UploadGate(
-      configService?.get<number>('uploadsPerMinute') ??
-        DEFAULT_UPLOADS_PER_MINUTE,
-    );
   }
 
   public getTools(): Map<string, ToolRegistration> {
@@ -244,7 +241,9 @@ export class TaskCommentsTools extends TaskToolsBase {
           UPLOAD_DIRS_ENV +
           '.\n' +
           '- content + fileName: text you write yourself (log excerpt, repro steps), stored as a file named fileName.\n' +
-          'The P4 Plan server limits size and blocks some file types. If a file with the same name exists, the server adds "name (1)". The first image attached becomes the cover image. Uploads run one at a time and are limited per minute (every upload sent to the server counts, also ones it rejects); if the limit is reached, wait instead of retrying. ' +
+          'The P4 Plan server limits size and blocks some file types. If a file with the same name exists, the server adds "name (1)". The first image attached becomes the cover image. Uploads run one at a time and at most ' +
+          UPLOADS_PER_MINUTE +
+          ' start per minute (every upload sent to the server counts, also ones it rejects); if the limit is reached, wait instead of retrying. ' +
           'Returns the attachment path for download_attachment, delete_attachment and set_cover_image. ' +
           'For images it also returns imageHtml, an <img> tag that shows the image inline when put in a comment, detailedDescription, stepsToReproduce or Multiline Text field of the same item.',
         inputSchema: {
@@ -592,10 +591,15 @@ export class TaskCommentsTools extends TaskToolsBase {
     }
 
     const clientRoots = (await context?.listRoots?.().catch(() => [])) ?? [];
-    const file = await openUploadFile(
-      request.filePath ?? '',
-      await allowedUploadRoots(clientRoots, this.uploadDirs),
-    );
+    const roots = await allowedUploadRoots(clientRoots, this.uploadDirs);
+    if (roots.length === 0 && this.uploadDirs.length > 0) {
+      const missing = await unusableUploadDirs(this.uploadDirs);
+      throw new Error(
+        `upload_attachment: ${UPLOAD_DIRS_ENV} is set, but none of its folders can be used here (not an absolute path, or no such folder): ${missing.map((dir) => `"${dir}"`).join(', ')}. ` +
+          `Tell the user to fix ${UPLOAD_DIRS_ENV}; with Docker, the folder must be mounted into the container (-v). Text can still be attached with content + fileName.`,
+      );
+    }
+    const file = await openUploadFile(request.filePath ?? '', roots);
     try {
       if (file.size === 0) {
         throw new Error(

@@ -483,8 +483,19 @@ export class GraphQLClientService implements OnModuleInit {
     const body = Readable.from(
       (async function* () {
         yield head;
-        if (Buffer.isBuffer(file.data)) yield file.data;
-        else yield* file.data;
+        let sent = 0;
+        for await (const chunk of Buffer.isBuffer(file.data)
+          ? [file.data]
+          : file.data) {
+          sent += (chunk as Buffer).length;
+          yield chunk as Buffer;
+        }
+        // A shorter body than Content-Length would leave the request hanging.
+        if (sent !== file.size) {
+          throw new Error(
+            `upload_attachment: "${file.fileName}" shrank from ${file.size} to ${sent} bytes while it was being uploaded (was it truncated or rotated?). Try again once the file has stopped changing.`,
+          );
+        }
         yield tail;
       })(),
     );

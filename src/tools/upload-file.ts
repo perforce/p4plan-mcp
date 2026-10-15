@@ -9,11 +9,9 @@
 
 import { constants, promises as fs } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-export const UPLOAD_DIRS_ENV = 'P4PLAN_UPLOAD_DIRS';
+import { UPLOAD_DIRS_ENV, normaliseUploadPath } from '../config/configuration';
 
 export interface OpenedUploadFile {
   handle: FileHandle;
@@ -22,41 +20,12 @@ export interface OpenedUploadFile {
   name: string;
 }
 
-/** Turn a file:// URI, ~ path or quoted path into a plain path. */
-function normalisePathInput(raw: string): string {
-  let value = raw
-    .trim()
-    .replace(/^(["'`])(.*)\1$/s, '$2')
-    .trim();
-  if (/^file:\/\//i.test(value)) {
-    try {
-      value = fileURLToPath(value);
-    } catch {
-      throw new Error(
-        `upload_attachment: "${raw}" is not a valid file:// URI. Pass an absolute file path instead.`,
-      );
-    }
-  }
-  if (value === '~') return homedir();
-  if (value.startsWith('~/') || value.startsWith('~\\')) {
-    return path.join(homedir(), value.slice(2));
-  }
-  return value;
-}
-
 function fileUriToPath(uri: string): string | null {
   try {
     return fileURLToPath(uri);
   } catch {
     return null;
   }
-}
-
-export function parseUploadDirs(value: string | undefined): string[] {
-  return (value ?? '')
-    .split(path.delimiter)
-    .map((dir) => normalisePathInput(dir))
-    .filter((dir) => dir !== '');
 }
 
 /** Real paths of the client roots and configured folders that exist. */
@@ -78,6 +47,20 @@ export async function allowedUploadRoots(
     }
   }
   return roots;
+}
+
+/** Configured folders that cannot be used: not absolute, or not a folder. */
+export async function unusableUploadDirs(
+  uploadDirs: string[],
+): Promise<string[]> {
+  const unusable: string[] = [];
+  for (const dir of uploadDirs) {
+    const stats = path.isAbsolute(dir)
+      ? await fs.stat(dir).catch(() => null)
+      : null;
+    if (!stats?.isDirectory()) unusable.push(dir);
+  }
+  return unusable;
 }
 
 /**
@@ -137,7 +120,7 @@ export async function openUploadFile(
     );
   }
 
-  let input = normalisePathInput(rawPath);
+  let input = normaliseUploadPath(rawPath);
   if (input === '') {
     throw new Error(`upload_attachment: 'filePath' is empty.`);
   }
@@ -197,6 +180,20 @@ export async function openUploadFile(
   try {
     const opened = await handle.stat();
     if (!opened.isFile()) throw notAFileError();
+    // A parent folder swapped for a symlink after the check changes these.
+    const [realAgain, onDisk] = await Promise.all([
+      fs.realpath(real).catch(() => null),
+      fs.stat(real).catch(() => null),
+    ]);
+    if (
+      realAgain !== real ||
+      onDisk?.dev !== opened.dev ||
+      onDisk?.ino !== opened.ino
+    ) {
+      throw new Error(
+        `upload_attachment: "${input}" changed while it was being opened. Try again once the file has stopped changing.`,
+      );
+    }
     // A hard link can share its content with a file outside the folders.
     if (opened.nlink > 1) {
       throw new Error(

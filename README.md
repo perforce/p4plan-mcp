@@ -43,11 +43,11 @@ The client spawns the MCP server as a child process. Authentication is provided 
 
 ## Prerequisites
 
-| Requirement             | Version                  | Notes                                                                                  |
-|-------------------------|--------------------------|----------------------------------------------------------------------------------------|
-| **Node.js**             | \>= 20 (24+ recommended) | The server targets ES2023. Check with `node -v`.                                       |
-| **npm**                 | \>= 9                    | Comes with Node.js. Check with `npm -v`.                                               |
-| **P4 Plan API**         | \>= 2026.1.002           | Required for all tool operations. Earlier versions are not supported.                  |
+| Requirement     | Version                  | Notes                                                                 |
+| --------------- | ------------------------ | --------------------------------------------------------------------- |
+| **Node.js**     | \>= 20 (24+ recommended) | The server targets ES2023. Check with `node -v`.                      |
+| **npm**         | \>= 9                    | Comes with Node.js. Check with `npm -v`.                              |
+| **P4 Plan API** | \>= 2026.1.002           | Required for all tool operations. Earlier versions are not supported. |
 
 > **Tip:** Use [nvm](https://github.com/nvm-sh/nvm) to manage Node.js versions, or skip the Node.js requirement entirely by using [Docker](#docker).
 
@@ -65,17 +65,17 @@ npx -y @perforce/p4plan-mcp
 
 ```json
 {
-    "servers": {
-        "p4-plan": {
-            "type": "stdio",
-            "command": "npx",
-            "args": ["-y", "@perforce/p4plan-mcp"],
-            "env": {
-                "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
-                "P4PLAN_API_URL": "http://localhost:4000"
-            }
-        }
+  "servers": {
+    "p4-plan": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@perforce/p4plan-mcp"],
+      "env": {
+        "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
+        "P4PLAN_API_URL": "http://localhost:4000"
+      }
     }
+  }
 }
 ```
 
@@ -136,18 +136,22 @@ The image is published to Docker Hub at [`perforce/p4plan-mcp`](https://hub.dock
 
 ```json
 {
-    "servers": {
-        "p4-plan": {
-            "type": "stdio",
-            "command": "docker",
-            "args": [
-                "run", "-i", "--rm",
-                "-e", "P4PLAN_API_AUTH_TOKEN=YOUR_JWT_TOKEN",
-                "-e", "P4PLAN_API_URL=http://host.docker.internal:4000",
-                "perforce/p4plan-mcp:latest"
-            ]
-        }
+  "servers": {
+    "p4-plan": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "P4PLAN_API_AUTH_TOKEN=YOUR_JWT_TOKEN",
+        "-e",
+        "P4PLAN_API_URL=http://host.docker.internal:4000",
+        "perforce/p4plan-mcp:latest"
+      ]
     }
+  }
 }
 ```
 
@@ -159,9 +163,13 @@ The image is published to Docker Hub at [`perforce/p4plan-mcp`](https://hub.dock
     "p4-plan": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm",
-        "-e", "P4PLAN_API_AUTH_TOKEN=YOUR_JWT_TOKEN",
-        "-e", "P4PLAN_API_URL=http://host.docker.internal:4000",
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "P4PLAN_API_AUTH_TOKEN=YOUR_JWT_TOKEN",
+        "-e",
+        "P4PLAN_API_URL=http://host.docker.internal:4000",
         "perforce/p4plan-mcp:latest"
       ]
     }
@@ -234,17 +242,17 @@ This means content read from P4 Plan (a task description or a comment, for examp
 
 ```json
 {
-    "servers": {
-        "p4-plan": {
-            "type": "stdio",
-            "command": "npx",
-            "args": ["-y", "@perforce/p4plan-mcp", "--readonly"],
-            "env": {
-                "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
-                "P4PLAN_API_URL": "http://localhost:4000"
-            }
-        }
+  "servers": {
+    "p4-plan": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@perforce/p4plan-mcp", "--readonly"],
+      "env": {
+        "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
+        "P4PLAN_API_URL": "http://localhost:4000"
+      }
     }
+  }
 }
 ```
 
@@ -267,7 +275,7 @@ The file is streamed to the P4 Plan API (`POST /attachment/<id>/upload`), so its
 
 To show an image inside a comment or a multiline field (bug description, steps to reproduce, Multiline Text columns), upload it to the same item and put the returned `imageHtml` (`<img src="hansoft://...">`) in the HTML. This is how the P4 Plan clients embed pasted images; the server turns images with any other `src` into plain links.
 
-So that one client cannot flood the P4 Plan API (a model stuck in a loop, or a prompt injection asking for many files), each MCP server runs its uploads one at a time and starts at most `P4PLAN_UPLOADS_PER_MINUTE` uploads per minute (default 20, `0` for no limit). Further calls get an error saying how long to wait.
+So that one client cannot flood the P4 Plan API (a model stuck in a loop, or a prompt injection asking for many files), each MCP server runs its uploads one at a time and starts at most 20 uploads per minute. Further calls get an error saying how long to wait.
 
 Every tool publishes MCP tool annotations. `readOnlyHint` marks the tools that only read; tools that write also carry `destructiveHint` (the call deletes or overwrites data) and `idempotentHint`. Clients that support annotations can use them to ask for confirmation before a write.
 
@@ -622,17 +630,17 @@ Create `.vscode/mcp.json` in your workspace:
 
 ```json
 {
-    "servers": {
-        "p4-plan": {
-            "type": "stdio",
-            "command": "npx",
-            "args": ["-y", "@perforce/p4plan-mcp"],
-            "env": {
-                "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
-                "P4PLAN_API_URL": "http://localhost:4000"
-            }
-        }
+  "servers": {
+    "p4-plan": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@perforce/p4plan-mcp"],
+      "env": {
+        "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
+        "P4PLAN_API_URL": "http://localhost:4000"
+      }
     }
+  }
 }
 ```
 
@@ -647,17 +655,17 @@ If running from a local clone instead of npm:
 
 ```json
 {
-    "servers": {
-        "p4-plan": {
-            "type": "stdio",
-            "command": "node",
-            "args": ["/path/to/MCP/dist/main.js"],
-            "env": {
-                "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
-                "P4PLAN_API_URL": "http://localhost:4000"
-            }
-        }
+  "servers": {
+    "p4-plan": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/path/to/MCP/dist/main.js"],
+      "env": {
+        "P4PLAN_API_AUTH_TOKEN": "YOUR_JWT_TOKEN",
+        "P4PLAN_API_URL": "http://localhost:4000"
+      }
     }
+  }
 }
 ```
 
@@ -670,25 +678,25 @@ For added security, you can use VS Code input prompts to avoid storing tokens in
 
 ```json
 {
-    "inputs": [
-        {
-            "type": "promptString",
-            "id": "p4-plan-jwt",
-            "description": "P4 Plan JWT Token",
-            "password": true
-        }
-    ],
-    "servers": {
-        "p4-plan": {
-            "type": "stdio",
-            "command": "npx",
-            "args": ["-y", "@perforce/p4plan-mcp"],
-            "env": {
-                "P4PLAN_API_AUTH_TOKEN": "${input:p4-plan-jwt}",
-                "P4PLAN_API_URL": "http://localhost:4000"
-            }
-        }
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "p4-plan-jwt",
+      "description": "P4 Plan JWT Token",
+      "password": true
     }
+  ],
+  "servers": {
+    "p4-plan": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@perforce/p4plan-mcp"],
+      "env": {
+        "P4PLAN_API_AUTH_TOKEN": "${input:p4-plan-jwt}",
+        "P4PLAN_API_URL": "http://localhost:4000"
+      }
+    }
+  }
 }
 ```
 
@@ -786,7 +794,6 @@ claude mcp add p4-plan \
 - `P4PLAN_ALLOW_SELF_SIGNED_CERTS` - Set to `true` to accept self-signed or untrusted TLS certificates when connecting to the API over HTTPS (default: `false`)
 - `P4PLAN_READONLY` - Set to `true` (or `1`, `yes`, `on`) to expose only the tools that read, same as the `--readonly` argument (default: `false`). Case and surrounding spaces are ignored; an unrecognised value turns read-only mode on and logs a warning. See [Read-only mode](#read-only-mode)
 - `P4PLAN_UPLOAD_DIRS` - Folders `upload_attachment` may read files from, in addition to the workspace folders the MCP client shares. Separate several with `:` (`;` on Windows). See [Uploading files](#uploading-files)
-- `P4PLAN_UPLOADS_PER_MINUTE` - Most uploads one MCP server starts per minute (default: `20`, `0` = no limit). Uploads always run one at a time
 - `LOG_LEVEL` - Logging level: `debug`, `info`, `warn`, `error` (default: `debug`)
 - `SEARCH_LIMIT` - Maximum number of results returned by `search_tasks` (default: `400`)
 
@@ -797,20 +804,20 @@ The server includes **skill files** — domain-specific guides that help AI agen
 - **`read_skill` tool** — any MCP client can call `read_skill` with a `skillName` to fetch skill content at runtime. This is the primary access method and works with all clients.
 - **MCP resources** — skills are also registered as MCP resources (e.g., `skill://p4-plan/search-queries`) for clients that support native resource reading.
 
-| Skill              | Purpose                                                     |
-|--------------------|-------------------------------------------------------------|
-| project-navigation | Finding and creating projects, items, getting started       |
-| search-queries     | P4 Plan Find query syntax (column names, values, operators) |
-| task-management    | Task CRUD, status, assignments, comments, attachments       |
-| planning           | Sprints, releases, commitment, allocations                  |
-| backlog-refinement | Backlog items, estimation, prioritization                   |
-| bug-tracking       | Bugs, severity, QA section                                  |
-| custom-fields      | Custom columns, project-specific metadata                   |
-| gantt-scheduling   | Scheduled tasks, timeline, dependencies                     |
-| workflows          | Status workflows, status state machines                     |
-| pipeline           | Pipeline steps, breakdown, defects in a pipeline step       |
-| comment-html-format | Allowed HTML subset for comments and multiline fields      |
-| mentions           | @user mention syntax in comments                            |
+| Skill               | Purpose                                                     |
+| ------------------- | ----------------------------------------------------------- |
+| project-navigation  | Finding and creating projects, items, getting started       |
+| search-queries      | P4 Plan Find query syntax (column names, values, operators) |
+| task-management     | Task CRUD, status, assignments, comments, attachments       |
+| planning            | Sprints, releases, commitment, allocations                  |
+| backlog-refinement  | Backlog items, estimation, prioritization                   |
+| bug-tracking        | Bugs, severity, QA section                                  |
+| custom-fields       | Custom columns, project-specific metadata                   |
+| gantt-scheduling    | Scheduled tasks, timeline, dependencies                     |
+| workflows           | Status workflows, status state machines                     |
+| pipeline            | Pipeline steps, breakdown, defects in a pipeline step       |
+| comment-html-format | Allowed HTML subset for comments and multiline fields       |
+| mentions            | @user mention syntax in comments                            |
 
 See [`skills/README.md`](skills/README.md) for details on using skills with different AI clients.
 

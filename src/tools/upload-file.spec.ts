@@ -7,17 +7,19 @@ import {
   linkSync,
   mkdirSync,
   mkdtempSync,
+  promises as fsPromises,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import type { FileHandle } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   allowedUploadRoots,
   openUploadFile,
-  parseUploadDirs,
   validateAttachmentFileName,
 } from './upload-file';
 
@@ -66,16 +68,6 @@ describe('upload-file', () => {
       expect(result).toHaveLength(2);
       expect(result[0].endsWith('root')).toBe(true);
       expect(result[1].endsWith('root-evil')).toBe(true);
-    });
-  });
-
-  describe('parseUploadDirs', () => {
-    it('splits on the OS path-list separator and expands ~', () => {
-      expect(parseUploadDirs(`/a${delimiter} ~/b ${delimiter}`)).toEqual([
-        '/a',
-        join(homedir(), 'b'),
-      ]);
-      expect(parseUploadDirs(undefined)).toEqual([]);
     });
   });
 
@@ -186,6 +178,27 @@ describe('upload-file', () => {
       await expect(
         opened(join(root, 'hard.txt'), await roots(root)),
       ).rejects.toThrow('hard link');
+    });
+
+    it('refuses a file whose parent folder is swapped for a symlink while opening', async () => {
+      writeFileSync(join(outside, 'shot.png'), 'nope');
+      const allowed = await roots(root);
+      const realOpen = fsPromises.open;
+      const openSpy = jest
+        .spyOn(fsPromises, 'open')
+        .mockImplementation(async (file, flags) => {
+          const handle: FileHandle = await realOpen(file, flags);
+          renameSync(join(root, 'sub'), join(root, 'sub-old'));
+          symlinkSync(outside, join(root, 'sub'));
+          return handle;
+        });
+      try {
+        await expect(
+          opened(join(root, 'sub', 'shot.png'), allowed),
+        ).rejects.toThrow('changed while it was being opened');
+      } finally {
+        openSpy.mockRestore();
+      }
     });
 
     it('compares folder names exactly, not ignoring case', async () => {

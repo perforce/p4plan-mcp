@@ -570,6 +570,21 @@ describe('TaskCommentsTools', () => {
       }
     });
 
+    it('names configured upload folders that do not exist', async () => {
+      mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
+      tools = new TaskCommentsTools(
+        mockGraphqlClient as unknown as GraphQLClientService,
+        config({ uploadDirs: ['/uploads-not-mounted', 'relative/dir'] }),
+      );
+
+      await expect(
+        upload({ taskId: '42', filePath: '/uploads-not-mounted/a.txt' }),
+      ).rejects.toThrow(
+        'P4PLAN_UPLOAD_DIRS is set, but none of its folders can be used here (not an absolute path, or no such folder): "/uploads-not-mounted", "relative/dir"',
+      );
+      expect(uploaded).toHaveLength(0);
+    });
+
     it('reports the name the server gave a duplicate', async () => {
       mockGraphqlClient.query
         .mockResolvedValueOnce({
@@ -671,29 +686,34 @@ describe('TaskCommentsTools', () => {
       mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
       tools = new TaskCommentsTools(
         mockGraphqlClient as unknown as GraphQLClientService,
-        config({ uploadDirs: [dir], uploadsPerMinute: 2 }),
+        config({ uploadDirs: [dir] }),
       );
 
-      await upload({ taskId: '42', content: 'a', fileName: 'a.txt' });
-      await upload({ taskId: '42', content: 'b', fileName: 'b.txt' });
+      for (let i = 0; i < 20; i++) {
+        await upload({ taskId: '42', content: 'a', fileName: `${i}.txt` });
+      }
       await expect(
-        upload({ taskId: '42', content: 'c', fileName: 'c.txt' }),
-      ).rejects.toThrow('P4PLAN_UPLOADS_PER_MINUTE');
-      expect(uploaded).toHaveLength(2);
+        upload({ taskId: '42', content: 'a', fileName: 'last.txt' }),
+      ).rejects.toThrow('allows 20 uploads per minute');
+      expect(uploaded).toHaveLength(20);
     });
 
     it('does not count refused files against the limit', async () => {
       mockGraphqlClient.query.mockResolvedValue({ item: { attachments: [] } });
       tools = new TaskCommentsTools(
         mockGraphqlClient as unknown as GraphQLClientService,
-        config({ uploadDirs: [dir], uploadsPerMinute: 1 }),
+        config({ uploadDirs: [dir] }),
       );
 
-      await expect(
-        upload({ taskId: '42', filePath: '/etc/hosts' }),
-      ).rejects.toThrow('outside the folders');
-      await upload({ taskId: '42', content: 'a', fileName: 'a.txt' });
-      expect(uploaded).toHaveLength(1);
+      for (let i = 0; i < 5; i++) {
+        await expect(
+          upload({ taskId: '42', filePath: '/etc/hosts' }),
+        ).rejects.toThrow('outside the folders');
+      }
+      for (let i = 0; i < 20; i++) {
+        await upload({ taskId: '42', content: 'a', fileName: `${i}.txt` });
+      }
+      expect(uploaded).toHaveLength(20);
     });
 
     it('accepts "#42" as an item ID and explains other non-numeric IDs', async () => {

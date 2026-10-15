@@ -644,6 +644,26 @@ describe('GraphQLClientService', () => {
       expect(config.maxRedirects).toBe(0);
     });
 
+    it('fails the body stream when the file delivers fewer bytes than announced', async () => {
+      mockHttpService.post.mockReturnValue(of(uploadResponse));
+
+      await service.uploadAttachment(
+        '42',
+        {
+          fileName: 'app.log',
+          mimeType: 'text/plain',
+          size: 10,
+          data: Readable.from([Buffer.from('short')]),
+        },
+        'tok',
+      );
+
+      const [, body] = postedRequest();
+      await expect(readBody(body)).rejects.toThrow(
+        '"app.log" shrank from 10 to 5 bytes',
+      );
+    });
+
     it('never writes the file content to the logs', async () => {
       mockHttpService.post.mockReturnValue(of(uploadResponse));
 

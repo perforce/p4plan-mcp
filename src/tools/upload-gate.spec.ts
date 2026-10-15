@@ -1,27 +1,12 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
-import {
-  DEFAULT_UPLOADS_PER_MINUTE,
-  UploadGate,
-  parseUploadsPerMinute,
-} from './upload-gate';
+import { UploadGate } from './upload-gate';
 
 describe('upload-gate', () => {
-  describe('parseUploadsPerMinute', () => {
-    it('reads whole numbers and falls back to the default otherwise', () => {
-      expect(parseUploadsPerMinute(' 5 ')).toBe(5);
-      expect(parseUploadsPerMinute('0')).toBe(0);
-      expect(parseUploadsPerMinute(undefined)).toBe(DEFAULT_UPLOADS_PER_MINUTE);
-      expect(parseUploadsPerMinute('-1')).toBe(DEFAULT_UPLOADS_PER_MINUTE);
-      expect(parseUploadsPerMinute('lots')).toBe(DEFAULT_UPLOADS_PER_MINUTE);
-      expect(parseUploadsPerMinute('2.5')).toBe(DEFAULT_UPLOADS_PER_MINUTE);
-    });
-  });
-
   describe('UploadGate', () => {
     it('runs tasks one after another, also after a failure', async () => {
-      const gate = new UploadGate(0);
+      const gate = new UploadGate();
       const events: string[] = [];
       const task =
         (name: string, fail = false) =>
@@ -66,11 +51,6 @@ describe('upload-gate', () => {
       now = 60_000;
       expect(() => gate.take()).not.toThrow();
       expect(() => gate.check()).toThrow('Wait 10 seconds');
-    });
-
-    it('has no limit when set to 0', () => {
-      const gate = new UploadGate(0, () => 0);
-      for (let i = 0; i < 100; i++) gate.take();
     });
   });
 });

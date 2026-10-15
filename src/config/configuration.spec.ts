@@ -1,7 +1,14 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
-import configuration, { envFlag, parseReadOnlyEnv } from './configuration';
+import { homedir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import configuration, {
+  envFlag,
+  normaliseUploadPath,
+  parseReadOnlyEnv,
+  parseUploadDirs,
+} from './configuration';
 
 describe('envFlag', () => {
   it.each(['true', '1'])('is on for %j', (value) => {
@@ -107,5 +114,23 @@ describe('configuration', () => {
         process.env.P4PLAN_ALLOW_SELF_SIGNED_CERTS = value;
       expect(configuration().allowSelfSignedCerts).toBe(expected);
     });
+  });
+});
+
+describe('parseUploadDirs', () => {
+  it('splits on the OS path-list separator and expands ~', () => {
+    expect(parseUploadDirs(`/a${delimiter} ~/b ${delimiter}`)).toEqual([
+      '/a',
+      join(homedir(), 'b'),
+    ]);
+    expect(parseUploadDirs(undefined)).toEqual([]);
+  });
+});
+
+describe('normaliseUploadPath', () => {
+  it('unquotes paths and converts file:// URIs', () => {
+    expect(normaliseUploadPath(' "/a b/c.txt" ')).toBe('/a b/c.txt');
+    expect(normaliseUploadPath('file:///a%20b/c.txt')).toBe('/a b/c.txt');
+    expect(normaliseUploadPath('~')).toBe(homedir());
   });
 });

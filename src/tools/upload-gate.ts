@@ -4,26 +4,18 @@
 /**
  * Keeps one MCP client (a looping model, or a prompt injection) from flooding
  * the P4 Plan API with uploads: they run one at a time, and at most
- * P4PLAN_UPLOADS_PER_MINUTE start in any 60 seconds (0 = no limit).
+ * UPLOADS_PER_MINUTE start in any 60 seconds.
  */
 
-export const UPLOADS_PER_MINUTE_ENV = 'P4PLAN_UPLOADS_PER_MINUTE';
-export const DEFAULT_UPLOADS_PER_MINUTE = 20;
-
+export const UPLOADS_PER_MINUTE = 20;
 const WINDOW_MS = 60_000;
-
-/** A whole number of 0 or more; anything else falls back to the default. */
-export function parseUploadsPerMinute(value: string | undefined): number {
-  const text = (value ?? '').trim();
-  return /^\d+$/.test(text) ? Number(text) : DEFAULT_UPLOADS_PER_MINUTE;
-}
 
 export class UploadGate {
   private queue: Promise<void> = Promise.resolve();
   private readonly started: number[] = [];
 
   constructor(
-    private readonly perMinute: number,
+    private readonly perMinute = UPLOADS_PER_MINUTE,
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -38,7 +30,6 @@ export class UploadGate {
 
   /** Throw a fix-it error when the per-minute limit is reached. */
   check(): void {
-    if (this.perMinute === 0) return;
     const now = this.now();
     while (this.started.length > 0 && now - this.started[0] >= WINDOW_MS) {
       this.started.shift();
@@ -49,7 +40,7 @@ export class UploadGate {
       );
       throw new Error(
         `upload_attachment: this MCP server allows ${this.perMinute} uploads per minute, and that limit is reached. ` +
-          `Wait ${waitSeconds} seconds and try again. Do not retry in a loop; if the user really needs more, they can raise ${UPLOADS_PER_MINUTE_ENV}.`,
+          `Wait ${waitSeconds} seconds and try again. Do not retry in a loop.`,
       );
     }
   }
@@ -57,6 +48,6 @@ export class UploadGate {
   /** Check the limit and count one upload as started. */
   take(): void {
     this.check();
-    if (this.perMinute !== 0) this.started.push(this.now());
+    this.started.push(this.now());
   }
 }
