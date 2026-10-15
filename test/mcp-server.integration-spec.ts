@@ -18,12 +18,15 @@
  * with no live P4 Plan server and no AI model.
  */
 
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 import { AppModule } from '../src/app.module';
 import { ToolsService } from '../src/tools/tools.service';
@@ -79,6 +82,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
     login: jest.fn(),
     getCurrentUser: jest.fn(),
     downloadAttachment: jest.fn(),
+    uploadAttachment: jest.fn(),
     healthcheck: jest.fn().mockResolvedValue({ ok: true, status: 200 }),
   };
 
@@ -583,6 +587,113 @@ describe('MCP Server integration (real tools, mocked network)', () => {
     });
   });
 
+  describe('upload_attachment and client roots', () => {
+    let rootsServer: McpServer;
+    let rootsClient: Client;
+    let workspace: string;
+    let elsewhere: string;
+
+    beforeAll(async () => {
+      workspace = mkdtempSync(join(tmpdir(), 'p4plan-it-root-'));
+      elsewhere = mkdtempSync(join(tmpdir(), 'p4plan-it-other-'));
+      writeFileSync(join(workspace, 'shot.png'), 'PNG');
+      writeFileSync(join(elsewhere, 'secret.txt'), 'nope');
+
+      rootsServer = createMcpServer({
+        toolsService,
+        skillsTools: moduleRef.get(SkillsTools),
+        authToken: AUTH_TOKEN,
+      });
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      rootsClient = new Client(
+        { name: 'integration-test-roots-client', version: '1.0.0' },
+        { capabilities: { roots: {} } },
+      );
+      rootsClient.setRequestHandler(ListRootsRequestSchema, () => ({
+        roots: [{ uri: pathToFileURL(workspace).href, name: 'workspace' }],
+      }));
+      await rootsServer.connect(serverTransport);
+      await rootsClient.connect(clientTransport);
+    });
+
+    afterAll(async () => {
+      await rootsClient?.close().catch(() => {});
+      await rootsServer?.close().catch(() => {});
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(elsewhere, { recursive: true, force: true });
+    });
+
+    beforeEach(() => {
+      mockGraphqlClient.uploadAttachment.mockReset();
+      mockGraphqlClient.uploadAttachment.mockResolvedValue({
+        p4PlanPath: 'hansoft://server/DocumentID/1',
+      });
+    });
+
+    it('is a write tool that only adds data', async () => {
+      const { tools } = await client.listTools();
+      const upload = tools.find((t) => t.name === 'upload_attachment');
+
+      expect(upload?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+      });
+    });
+
+    it('uploads a file inside a root the client shares', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ item: { attachments: [] } })
+        .mockResolvedValueOnce({
+          item: {
+            attachments: [{ path: 'Att/shot.png', size: 3, coverImage: true }],
+          },
+        });
+
+      const result = asResult(
+        await rootsClient.callTool({
+          name: 'upload_attachment',
+          arguments: { taskId: '42', filePath: join(workspace, 'shot.png') },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      expect(parseText<{ path: string }>(result).path).toBe('Att/shot.png');
+      expect(mockGraphqlClient.uploadAttachment).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a file outside the roots without uploading', async () => {
+      mockQuery.mockResolvedValue({ item: { attachments: [] } });
+
+      const result = asResult(
+        await rootsClient.callTool({
+          name: 'upload_attachment',
+          arguments: { taskId: '42', filePath: join(elsewhere, 'secret.txt') },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('outside the folders');
+      expect(mockGraphqlClient.uploadAttachment).not.toHaveBeenCalled();
+    });
+
+    it('refuses local files when the client shares no roots', async () => {
+      mockQuery.mockResolvedValue({ item: { attachments: [] } });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'upload_attachment',
+          arguments: { taskId: '42', filePath: join(workspace, 'shot.png') },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('P4PLAN_UPLOAD_DIRS');
+      expect(mockGraphqlClient.uploadAttachment).not.toHaveBeenCalled();
+    });
+  });
+
   describe('read-only mode', () => {
     let readOnlyServer: McpServer;
     let readOnlyClient: Client;
@@ -623,6 +734,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
       expect(names).toContain('get_tasks');
       expect(names).not.toContain('post_comment');
       expect(names).not.toContain('delete_comment');
+      expect(names).not.toContain('upload_attachment');
       tools.forEach((tool) => {
         expect(tool.annotations?.readOnlyHint).toBe(true);
       });

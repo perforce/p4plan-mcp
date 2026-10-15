@@ -35,6 +35,11 @@
           "name": "P4PLAN_READONLY",
           "description": "Set to 'true' to expose only the tools that read (same as the --readonly argument). Default: false.",
           "isRequired": false
+        },
+        {
+          "name": "P4PLAN_UPLOAD_DIRS",
+          "description": "Folders upload_attachment may read files from, besides the workspace folders the MCP client shares. Separate several with ':' (';' on Windows).",
+          "isRequired": false
         }
       ]
     },
@@ -62,6 +67,11 @@
         {
           "name": "P4PLAN_READONLY",
           "description": "Set to 'true' to expose only the tools that read (same as the --readonly argument). Default: false.",
+          "isRequired": false
+        },
+        {
+          "name": "P4PLAN_UPLOAD_DIRS",
+          "description": "Folders upload_attachment may read files from, besides the workspace folders the MCP client shares. Separate several with ':' (';' on Windows).",
           "isRequired": false
         }
       ]

@@ -6,8 +6,10 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { of, throwError } from 'rxjs';
 import { AxiosResponse, InternalAxiosRequestConfig, AxiosError } from 'axios';
+import { Readable } from 'node:stream';
 import {
   GraphQLClientService,
+  contentDispositionFileName,
   isReadOnlyDocument,
 } from './graphql-client.service';
 import * as graphqlDocuments from '../graphql';
@@ -503,6 +505,24 @@ describe('GraphQLClientService', () => {
       ).resolves.toEqual({ ok: true });
     });
 
+    it('blocks attachment uploads without sending a request', async () => {
+      const readOnlyService = await createService(true);
+
+      await expect(
+        readOnlyService.uploadAttachment(
+          '42',
+          {
+            fileName: 'a.txt',
+            mimeType: 'text/plain',
+            size: 2,
+            data: Buffer.from('hi'),
+          },
+          'tok',
+        ),
+      ).rejects.toThrow('read-only mode');
+      expect(mockHttpService.post.mock.calls).toHaveLength(0);
+    });
+
     it('sends mutations when read-only mode is off', async () => {
       mockHttpService.post.mockReturnValue(of(okResponse));
 
@@ -558,6 +578,191 @@ describe('GraphQLClientService', () => {
   // `debugOperation`). Security finding TM-007 / CR-2 flags sensitive data in
   // debug logs; these tests lock the current masking so regressions — or a
   // future broadening of the sanitizer — are caught.
+  describe('uploadAttachment', () => {
+    const uploadResponse: AxiosResponse = {
+      data: { success: true, p4PlanPath: 'hansoft://server/DocumentID/7' },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as InternalAxiosRequestConfig,
+    };
+
+    async function readBody(body: unknown): Promise<string> {
+      const chunks: Buffer[] = [];
+      for await (const chunk of body as Readable) {
+        chunks.push(Buffer.from(chunk as Buffer));
+      }
+      return Buffer.concat(chunks).toString('utf-8');
+    }
+
+    function postedRequest() {
+      return mockHttpService.post.mock.calls[0] as unknown as [
+        string,
+        unknown,
+        {
+          headers: Record<string, string>;
+          maxBodyLength: number;
+          maxRedirects: number;
+        },
+      ];
+    }
+
+    it('streams one multipart "file" part to the upload endpoint', async () => {
+      mockHttpService.post.mockReturnValue(of(uploadResponse));
+
+      const result = await service.uploadAttachment(
+        ' 42 ',
+        {
+          fileName: 'log.txt',
+          mimeType: 'text/plain',
+          size: 5,
+          data: Readable.from([Buffer.from('he'), Buffer.from('llo')]),
+        },
+        'tok',
+      );
+
+      expect(result.p4PlanPath).toBe('hansoft://server/DocumentID/7');
+      const [url, body, config] = postedRequest();
+      expect(url).toBe('http://localhost:8080/attachment/42/upload');
+      const boundary = /boundary=(\S+)$/.exec(
+        config.headers['Content-Type'],
+      )?.[1];
+      expect(config.headers['Content-Type']).toMatch(/^multipart\/form-data/);
+      const text = await readBody(body);
+      expect(text).toBe(
+        `--${boundary}\r\n` +
+          'Content-Disposition: form-data; name="file"; filename="log.txt"\r\n' +
+          'Content-Type: text/plain\r\n\r\n' +
+          'hello' +
+          `\r\n--${boundary}--\r\n`,
+      );
+      expect(Number(config.headers['Content-Length'])).toBe(
+        Buffer.byteLength(text),
+      );
+      expect(config.headers.Authorization).toBe('Bearer tok');
+      expect(config.maxBodyLength).toBe(Infinity);
+      expect(config.maxRedirects).toBe(0);
+    });
+
+    it('fails the body stream when the file delivers fewer bytes than announced', async () => {
+      mockHttpService.post.mockReturnValue(of(uploadResponse));
+
+      await service.uploadAttachment(
+        '42',
+        {
+          fileName: 'app.log',
+          mimeType: 'text/plain',
+          size: 10,
+          data: Readable.from([Buffer.from('short')]),
+        },
+        'tok',
+      );
+
+      const [, body] = postedRequest();
+      await expect(readBody(body)).rejects.toThrow(
+        '"app.log" shrank from 10 to 5 bytes',
+      );
+    });
+
+    it('never writes the file content to the logs', async () => {
+      mockHttpService.post.mockReturnValue(of(uploadResponse));
+
+      await service.uploadAttachment(
+        '42',
+        {
+          fileName: 'secret.txt',
+          mimeType: 'text/plain',
+          size: 13,
+          data: Buffer.from('TOP-SECRET-42'),
+        },
+        'tok',
+      );
+
+      const logged = JSON.stringify([
+        mockLogger.debug.mock.calls,
+        mockLogger.log.mock.calls,
+      ]);
+      expect(logged).toContain('secret.txt');
+      expect(logged).not.toContain('TOP-SECRET-42');
+    });
+
+    it.each(['../graphql', '42/../../graphql', '42?x=1', ''])(
+      'rejects a task ID that is not numeric without sending a request: %s',
+      async (taskId) => {
+        await expect(
+          service.uploadAttachment(
+            taskId,
+            {
+              fileName: 'a.txt',
+              mimeType: 'text/plain',
+              size: 1,
+              data: Buffer.from('a'),
+            },
+            'tok',
+          ),
+        ).rejects.toThrow('expected a numeric task ID');
+        expect(mockHttpService.post.mock.calls).toHaveLength(0);
+      },
+    );
+
+    function httpError(status: number, message: string): AxiosError {
+      const error = new AxiosError('Request failed');
+      error.response = {
+        status,
+        data: { statusCode: status, message },
+        statusText: '',
+        headers: {},
+        config: {} as InternalAxiosRequestConfig,
+      };
+      return error;
+    }
+
+    it.each([
+      [
+        400,
+        'Attachment size is too large',
+        'size limit of this P4 Plan server',
+      ],
+      [
+        400,
+        'Attachment type is not allowed by the server',
+        'file type is blocked',
+      ],
+      [
+        400,
+        'Something else',
+        'Upload rejected by the P4 Plan server: Something else',
+      ],
+      [401, 'Token is invalid', 'Authentication failed'],
+      [403, 'Forbidden', 'Document management access'],
+      [404, 'Invalid item ID', 'Item 42 not found'],
+      [
+        408,
+        'The request timed out',
+        'Call get_attachments for item 42 before retrying',
+      ],
+      [413, 'Payload Too Large', 'size limit of this P4 Plan server'],
+      [500, 'Failed to upload attachment', 'no Create right'],
+    ])('explains HTTP %d (%s)', async (status, message, expected) => {
+      mockHttpService.post.mockReturnValue(
+        throwError(() => httpError(status, message)),
+      );
+
+      await expect(
+        service.uploadAttachment(
+          '42',
+          {
+            fileName: 'a.txt',
+            mimeType: 'text/plain',
+            size: 1,
+            data: Buffer.from('a'),
+          },
+          'tok',
+        ),
+      ).rejects.toThrow(expected);
+    });
+  });
+
   describe('query() debug-log redaction', () => {
     const okResponse = {
       data: { data: { ok: true } },
@@ -611,5 +816,27 @@ describe('GraphQLClientService', () => {
 
       expect(loggedDebugText()).not.toContain('super-secret-token');
     });
+  });
+});
+
+describe('contentDispositionFileName', () => {
+  it('sends a plain ASCII name as is', () => {
+    expect(contentDispositionFileName('crash log.txt')).toBe(
+      'filename="crash log.txt"',
+    );
+  });
+
+  it('adds filename* for non-ASCII names, which the API prefers', () => {
+    expect(contentDispositionFileName('ünï-测试.txt')).toBe(
+      `filename="_n_-__.txt"; filename*=UTF-8''%C3%BCn%C3%AF-%E6%B5%8B%E8%AF%95.txt`,
+    );
+  });
+
+  it('cannot break out of the quoted header value', () => {
+    const header = contentDispositionFileName('a"; name="x\r\nX: y.txt');
+    expect(header).not.toMatch(/[\r\n]/);
+    expect(
+      header.startsWith('filename="a_; name=_x__X: y.txt"; filename*='),
+    ).toBe(true);
   });
 });

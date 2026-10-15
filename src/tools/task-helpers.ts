@@ -3,7 +3,7 @@
 
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { GraphQLClientService } from '../graphql-client/graphql-client.service';
-import { McpToolResult } from './tools.service';
+import { McpToolResult, ToolCallContext } from './tools.service';
 import { GET_PROJECT_SECTIONS_QUERY, GET_TASK_TYPE_QUERY } from '../graphql';
 
 /**
@@ -23,6 +23,7 @@ export interface ToolRegistration {
   handler: (
     args: Record<string, unknown>,
     authToken: string,
+    context?: ToolCallContext,
   ) => Promise<McpToolResult> | McpToolResult;
 }
 

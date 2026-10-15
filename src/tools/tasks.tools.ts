@@ -39,7 +39,10 @@ export class TasksTools {
     // Initialize all sub-tool providers
     this.crudTools = new TaskCrudTools(this.graphqlClient, this.configService);
     this.itemsTools = new TaskItemsTools(this.graphqlClient);
-    this.commentsTools = new TaskCommentsTools(this.graphqlClient);
+    this.commentsTools = new TaskCommentsTools(
+      this.graphqlClient,
+      this.configService,
+    );
     this.customFieldsTools = new TaskCustomFieldsTools(this.graphqlClient);
     this.actionsTools = new TaskActionsTools(this.graphqlClient);
     this.linksTools = new TaskLinksTools(this.graphqlClient);

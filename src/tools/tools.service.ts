@@ -36,12 +36,19 @@ export interface McpToolResult {
   isError?: boolean;
 }
 
+/** Per-call context from the MCP session. */
+export interface ToolCallContext {
+  /** The client's roots (file:// URIs); [] when the client shares none. */
+  listRoots?: () => Promise<string[]>;
+}
+
 /**
  * Tool handler function signature
  */
 export type ToolHandler = (
   args: Record<string, unknown>,
   authToken: string,
+  context?: ToolCallContext,
 ) => Promise<McpToolResult> | McpToolResult;
 
 /**
@@ -115,6 +122,7 @@ export class ToolsService {
     name: string,
     args: Record<string, unknown>,
     authToken: string,
+    context?: ToolCallContext,
   ): Promise<McpToolResult> {
     const handler = this.handlers.get(name);
 
@@ -126,7 +134,7 @@ export class ToolsService {
     }
 
     try {
-      return await handler(args, authToken);
+      return await handler(args, authToken, context);
     } catch (error) {
       this.logger.error(
         `Tool ${name} failed: ${error instanceof Error ? error.message : 'Unknown error'}`,

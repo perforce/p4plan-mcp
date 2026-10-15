@@ -1,6 +1,10 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
+import { homedir } from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 /** Command-line argument that turns on read-only mode. */
 export const READ_ONLY_ARG = '--readonly';
 
@@ -27,6 +31,42 @@ export function parseReadOnlyEnv(value: string | undefined): {
   return { readOnly: true, recognised: false };
 }
 
+export const UPLOAD_DIRS_ENV = 'P4PLAN_UPLOAD_DIRS';
+
+/** Strip quotes around a path and expand a leading ~. */
+function expandPath(raw: string): string {
+  const value = raw
+    .trim()
+    .replace(/^(["'`])(.*)\1$/s, '$2')
+    .trim();
+  if (value === '~') return homedir();
+  if (value.startsWith('~/') || value.startsWith('~\\')) {
+    return path.join(homedir(), value.slice(2));
+  }
+  return value;
+}
+
+/** Turn a file:// URI, ~ path or quoted path into a plain path. */
+export function normaliseUploadPath(raw: string): string {
+  const value = expandPath(raw);
+  if (!/^file:\/\//i.test(value)) return value;
+  try {
+    return fileURLToPath(value);
+  } catch {
+    throw new Error(
+      `upload_attachment: "${raw}" is not a valid file:// URI. Pass an absolute file path instead.`,
+    );
+  }
+}
+
+/** Plain paths only: a file:// URI would be split apart on ":". */
+export function parseUploadDirs(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(path.delimiter)
+    .map(expandPath)
+    .filter((dir) => dir !== '');
+}
+
 export default () => ({
   graphqlUrl: process.env.P4PLAN_API_URL ?? 'http://localhost:4000',
   logLevel: process.env.LOG_LEVEL ?? 'debug',
@@ -37,4 +77,5 @@ export default () => ({
   readOnly:
     parseReadOnlyEnv(process.env.P4PLAN_READONLY).readOnly ||
     process.argv.slice(2).includes(READ_ONLY_ARG),
+  uploadDirs: parseUploadDirs(process.env[UPLOAD_DIRS_ENV]),
 });

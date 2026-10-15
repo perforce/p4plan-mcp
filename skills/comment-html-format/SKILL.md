@@ -43,7 +43,7 @@ The wire format is always sanitized HTML. Two practical shapes:
 | `<pre>`, `<code>` | Code block / inline code | `<pre><code>...</code></pre>` for multi-line. Qt converts to its configured code font. |
 | `<ul>`, `<ol>`, `<li>` | Lists | Add inline `style="margin-top:0px;margin-bottom:0px"` on `<ul>`/`<ol>` for clean Qt rendering. `<ol type="...">`/`start` honored. |
 | `<table>`, `<thead>`, `<tbody>`, `<tfoot>`, `<tr>`, `<td>`, `<th>`, `<caption>`, `<colgroup>`, `<col>` | Tables | Use `border` attribute on `<table>` and `style="border-collapse:collapse"` for cross-client borders. |
-| `<img src="hansoft://...">` | Embedded image | **Only** `hansoft://` URLs render in Qt. External URLs render in the web client only. Avoid for cross-client comments. |
+| `<img src="hansoft://...">` | Embedded image | Upload the image to the same item with `upload_attachment` and use the `imageHtml` it returns. Only `hansoft://` images are kept; any other `src` (http, data:) is turned into a link. |
 
 ## Allowed inline CSS
 
@@ -63,7 +63,7 @@ Everything else is stripped. Don't try to be creative — `font-size`, `font-fam
 - **`<div>`** — strip-list; content is preserved but the tag is removed.
 - **Markdown** (`**bold**`, `# heading`, ` ```code``` `) — stored verbatim, never converted.
 - **Inline `style` on `<p>`, `<a>`, `<li>`, `<td>`, `<tr>`** beyond the table above — colors/fonts/sizes are stripped.
-- **External `<img>` URLs** — Qt only renders `hansoft://` images.
+- **External or `data:` `<img>` URLs** — the server turns them into links. Upload the image with `upload_attachment` and use its `imageHtml`.
 - **`<script>`, `<iframe>`, `<style>`, `<form>`, `<button>`, `<input>`, event handlers (`onclick=...`)** — stripped with content removed.
 
 ## Examples
