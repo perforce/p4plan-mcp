@@ -1,13 +1,17 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { GraphQLClientService } from '../graphql-client/graphql-client.service';
-import { McpToolResult } from './tools.service';
+import type { UploadSource } from '../graphql-client/graphql-client.service';
+import { McpToolResult, ToolCallContext } from './tools.service';
 import {
   TaskToolsBase,
   ToolRegistration,
   validateRequired,
+  READ_ONLY_ANNOTATIONS,
+  writeAnnotations,
 } from './task-helpers';
 import {
   GET_COMMENTS_QUERY,
@@ -18,6 +22,80 @@ import {
   UPDATE_COMMENT_MUTATION,
   DELETE_COMMENT_MUTATION,
 } from '../graphql';
+import { UPLOAD_DIRS_ENV } from '../config/configuration';
+import {
+  allowedUploadRoots,
+  openUploadFile,
+  unusableUploadDirs,
+  validateAttachmentFileName,
+} from './upload-file';
+import { UPLOADS_PER_MINUTE, UploadGate } from './upload-gate';
+
+interface Attachment {
+  id: string;
+  path: string;
+  size: number;
+  version: number;
+  imageWidth?: number;
+  imageHeight?: number;
+  coverImage: boolean;
+  addedBy: { id: string; name: string };
+  date: string;
+}
+
+interface UploadRequest {
+  taskId: string;
+  fileName: string;
+  filePath?: string;
+  content?: string;
+}
+
+function parseUploadArgs(args: Record<string, unknown>): UploadRequest {
+  validateRequired(args, ['taskId'], 'upload_attachment');
+  const taskId = String(args.taskId).trim().replace(/^#\s*/, '');
+  if (!/^\d+$/.test(taskId)) {
+    throw new Error(
+      `upload_attachment: 'taskId' must be the item's numeric ID, e.g. "145202" (got ${JSON.stringify(args.taskId)}).`,
+    );
+  }
+  const filePath =
+    typeof args.filePath === 'string' ? args.filePath.trim() : '';
+  const content = typeof args.content === 'string' ? args.content : undefined;
+  const fileName = typeof args.fileName === 'string' ? args.fileName : '';
+
+  if (filePath !== '') {
+    if (content) {
+      throw new Error(
+        "upload_attachment: give either 'filePath' (a local file) or 'content' + 'fileName' (text), not both.",
+      );
+    }
+    return { taskId, filePath, fileName };
+  }
+  if (content === undefined) {
+    throw new Error(
+      "upload_attachment: give 'filePath' (absolute path of a local file) or 'content' + 'fileName' (text to store as a file).",
+    );
+  }
+  if (content === '') {
+    throw new Error(
+      "upload_attachment: 'content' is empty. P4 Plan cannot store empty attachments; write the text to attach in 'content'.",
+    );
+  }
+  if (fileName.trim() === '') {
+    throw new Error(
+      'upload_attachment: \'fileName\' is required with \'content\', e.g. "crash.log" or "repro-steps.txt".',
+    );
+  }
+  return { taskId, content, fileName };
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 /**
  * Task Comments & Attachments Tools
@@ -29,13 +107,21 @@ import {
  * - delete_comment: Delete a comment
  * - get_attachments: List attachments on a task
  * - download_attachment: Download an attachment file's content
+ * - upload_attachment: Upload a local file or text as an attachment
  * - delete_attachment: Delete an attachment
  * - set_cover_image: Set/unset cover image
  */
 @Injectable()
 export class TaskCommentsTools extends TaskToolsBase {
-  constructor(graphqlClient: GraphQLClientService) {
+  private readonly uploadDirs: string[];
+  private readonly uploadGate = new UploadGate();
+
+  constructor(
+    graphqlClient: GraphQLClientService,
+    @Optional() configService?: ConfigService,
+  ) {
     super(graphqlClient);
+    this.uploadDirs = configService?.get<string[]>('uploadDirs') ?? [];
   }
 
   public getTools(): Map<string, ToolRegistration> {
@@ -57,6 +143,7 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getComments(args, authToken),
     });
@@ -82,6 +169,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'text'],
         },
+        annotations: writeAnnotations({
+          destructive: false,
+          idempotent: false,
+        }),
       },
       handler: (args, authToken) => this.postComment(args, authToken),
     });
@@ -102,6 +193,7 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getAttachments(args, authToken),
     });
@@ -131,9 +223,61 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'path'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) =>
         this.downloadAttachmentFile(args, authToken),
+    });
+
+    // upload_attachment
+    tools.set('upload_attachment', {
+      definition: {
+        name: 'upload_attachment',
+        description:
+          'Attach a file to a task, bug, sprint or release, e.g. a screenshot or log for a bug report. Give exactly one of:\n' +
+          '- filePath: absolute path of a local file. Only files inside the folders this server may read are allowed: the workspace folders your MCP client shares (roots) and the folders in ' +
+          UPLOAD_DIRS_ENV +
+          '. Hidden files and folders (names starting with ".") are refused. With Docker, the path must be inside a mounted folder listed in ' +
+          UPLOAD_DIRS_ENV +
+          '.\n' +
+          '- content + fileName: text you write yourself (log excerpt, repro steps), stored as a file named fileName.\n' +
+          'The P4 Plan server limits size and blocks some file types. If a file with the same name exists, the server adds "name (1)". The first image attached becomes the cover image. Uploads run one at a time and at most ' +
+          UPLOADS_PER_MINUTE +
+          ' start per minute (every upload sent to the server counts, also ones it rejects); if the limit is reached, wait instead of retrying. ' +
+          'Returns the attachment path for download_attachment, delete_attachment and set_cover_image. ' +
+          'For images it also returns imageHtml, an <img> tag that shows the image inline when put in a comment, detailedDescription, stepsToReproduce or Multiline Text field of the same item.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            taskId: {
+              type: 'string',
+              description: 'The ID of the item to attach the file to',
+            },
+            filePath: {
+              type: 'string',
+              description:
+                'Absolute path of the local file to upload (inside an allowed folder). Leave out when using content.',
+            },
+            content: {
+              type: 'string',
+              description:
+                'Text to upload as a file instead of a local file. Requires fileName.',
+            },
+            fileName: {
+              type: 'string',
+              description:
+                'Name for the attachment, e.g. "crash.log". Required with content; with filePath it defaults to the file\'s own name.',
+            },
+          },
+          required: ['taskId'],
+        },
+        annotations: writeAnnotations({
+          destructive: false,
+          idempotent: false,
+        }),
+      },
+      handler: (args, authToken, context) =>
+        this.uploadAttachment(args, authToken, context),
     });
 
     // delete_attachment
@@ -157,6 +301,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'path'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.deleteAttachment(args, authToken),
     });
@@ -182,6 +330,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.setCoverImage(args, authToken),
     });
@@ -212,6 +364,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'commentId', 'text'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.updateComment(args, authToken),
     });
@@ -237,6 +393,10 @@ export class TaskCommentsTools extends TaskToolsBase {
           },
           required: ['taskId', 'commentId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.deleteComment(args, authToken),
     });
@@ -311,17 +471,7 @@ export class TaskCommentsTools extends TaskToolsBase {
       item: {
         id: string;
         name: string;
-        attachments?: Array<{
-          id: string;
-          path: string;
-          size: number;
-          version: number;
-          imageWidth?: number;
-          imageHeight?: number;
-          coverImage: boolean;
-          addedBy: { id: string; name: string };
-          date: string;
-        }>;
+        attachments?: Attachment[];
       };
     }>(GET_ATTACHMENTS_QUERY, { id: taskId }, authToken);
 
@@ -340,6 +490,142 @@ export class TaskCommentsTools extends TaskToolsBase {
         },
       ],
     };
+  }
+
+  private async listAttachments(
+    taskId: string,
+    authToken: string,
+  ): Promise<Attachment[]> {
+    const result = await this.graphqlClient.query<{
+      item: { attachments?: Attachment[] | null };
+    }>(GET_ATTACHMENTS_QUERY, { id: taskId }, authToken);
+    return result.item.attachments ?? [];
+  }
+
+  private async uploadAttachment(
+    args: Record<string, unknown>,
+    authToken: string,
+    context?: ToolCallContext,
+  ): Promise<McpToolResult> {
+    const request = parseUploadArgs(args);
+    return this.uploadGate.run(() =>
+      this.sendUpload(request, authToken, context),
+    );
+  }
+
+  private async sendUpload(
+    request: UploadRequest,
+    authToken: string,
+    context?: ToolCallContext,
+  ): Promise<McpToolResult> {
+    const { taskId } = request;
+    this.uploadGate.check();
+    const before = await this.listAttachments(taskId, authToken);
+    const { source, close } = await this.openUploadSource(request, context);
+
+    let p4PlanPath: string | undefined;
+    try {
+      this.uploadGate.take();
+      ({ p4PlanPath } = await this.graphqlClient.uploadAttachment(
+        taskId,
+        source,
+        authToken,
+      ));
+    } finally {
+      await close();
+    }
+
+    const known = new Set(before.map((attachment) => attachment.path));
+    const added = (await this.listAttachments(taskId, authToken)).filter(
+      (attachment) => !known.has(attachment.path),
+    );
+    const attachment = added.length === 1 ? added[0] : undefined;
+    const storedName = attachment?.path.split('/').pop();
+    const isImage = source.mimeType.startsWith('image/');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            taskId,
+            fileName: source.fileName,
+            path: attachment?.path,
+            size: attachment?.size ?? source.size,
+            coverImage: attachment?.coverImage,
+            renamed:
+              storedName && storedName !== source.fileName
+                ? `A file named "${source.fileName}" already existed, so the server stored this one as "${storedName}".`
+                : undefined,
+            p4PlanPath,
+            imageHtml:
+              isImage && p4PlanPath
+                ? `<img src="${escapeHtmlAttribute(p4PlanPath)}">`
+                : undefined,
+            note: attachment
+              ? undefined
+              : 'Uploaded. Call get_attachments to see the attachment path.',
+          }),
+        },
+      ],
+    };
+  }
+
+  private async openUploadSource(
+    request: UploadRequest,
+    context?: ToolCallContext,
+  ): Promise<{ source: UploadSource; close: () => Promise<void> }> {
+    if (request.content !== undefined) {
+      const fileName = validateAttachmentFileName(request.fileName);
+      const data = Buffer.from(request.content, 'utf-8');
+      return {
+        source: {
+          fileName,
+          mimeType: this.getMimeType(fileName),
+          size: data.length,
+          data,
+        },
+        close: () => Promise.resolve(),
+      };
+    }
+
+    const clientRoots = (await context?.listRoots?.().catch(() => [])) ?? [];
+    const roots = await allowedUploadRoots(clientRoots, this.uploadDirs);
+    if (roots.length === 0 && this.uploadDirs.length > 0) {
+      const missing = await unusableUploadDirs(this.uploadDirs);
+      throw new Error(
+        `upload_attachment: ${UPLOAD_DIRS_ENV} is set, but none of its folders can be used here (not an absolute path, or no such folder): ${missing.map((dir) => `"${dir}"`).join(', ')}. ` +
+          `Tell the user to fix ${UPLOAD_DIRS_ENV}; with Docker, the folder must be mounted into the container (-v). Text can still be attached with content + fileName.`,
+      );
+    }
+    const file = await openUploadFile(request.filePath ?? '', roots);
+    try {
+      if (file.size === 0) {
+        throw new Error(
+          `upload_attachment: "${file.name}" is empty (0 bytes). P4 Plan cannot store empty attachments; tell the user.`,
+        );
+      }
+      const fileName = validateAttachmentFileName(
+        request.fileName || file.name,
+      );
+      return {
+        source: {
+          fileName,
+          mimeType: this.getMimeType(fileName),
+          size: file.size,
+          data: file.handle.createReadStream({
+            start: 0,
+            end: file.size - 1,
+            autoClose: false,
+          }),
+        },
+        close: () => file.handle.close(),
+      };
+    } catch (error) {
+      await file.handle.close();
+      throw error;
+    }
   }
 
   private async downloadAttachmentFile(

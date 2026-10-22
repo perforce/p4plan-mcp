@@ -59,3 +59,104 @@ export const GET_PROJECT_BACKLOG_QUERY = /* GraphQL */ `
     }
   }
 `;
+
+export const ALL_PROJECTS_QUERY = /* GraphQL */ `
+  query AllProjects {
+    projects {
+      id
+      name
+      backlog {
+        id
+      }
+      qa {
+        id
+      }
+    }
+  }
+`;
+
+export const CREATE_PROJECT_MUTATION = /* GraphQL */ `
+  mutation CreateProject($input: CreateProjectInput!) {
+    createProject(createProjectInput: $input) {
+      id
+      name
+    }
+  }
+`;
+
+export const CLONE_PROJECT_MUTATION = /* GraphQL */ `
+  mutation CloneProject($input: CloneProjectInput!) {
+    cloneProject(cloneProjectInput: $input) {
+      id
+      name
+    }
+  }
+`;
+
+export const ADD_PROJECT_USER_MUTATION = /* GraphQL */ `
+  mutation AddProjectUser($projectID: ID!, $userID: ID!) {
+    addProjectUser(projectID: $projectID, userID: $userID) {
+      id
+    }
+  }
+`;
+
+export const ADD_PROJECT_USER_GROUP_MUTATION = /* GraphQL */ `
+  mutation AddProjectUserGroup($projectID: ID!, $userGroupID: ID!) {
+    addProjectUserGroup(projectID: $projectID, userGroupID: $userGroupID) {
+      id
+    }
+  }
+`;
+
+export const UPDATE_PROJECT_USER_ACCESS_RIGHTS_MUTATION = /* GraphQL */ `
+  mutation UpdateProjectUserAccessRights(
+    $projectID: ID!
+    $userID: ID!
+    $accessRights: ProjectUserAccessRightsInput!
+  ) {
+    updateProjectUserAccessRights(
+      projectID: $projectID
+      userID: $userID
+      accessRights: $accessRights
+    ) {
+      accessRights {
+        isMainManager
+      }
+    }
+  }
+`;
+
+export const GET_PROJECT_MEMBER_IDS_QUERY = /* GraphQL */ `
+  query GetProjectMemberIds($id: ID!) {
+    project(id: $id) {
+      users {
+        user {
+          id
+        }
+      }
+    }
+  }
+`;
+
+export const GET_USERS_AND_GROUPS_QUERY = /* GraphQL */ `
+  query GetUsersAndGroups {
+    users {
+      __typename
+      id
+      name
+      isDeleted
+      isLocked
+    }
+    userGroups {
+      id
+      name
+      project {
+        id
+      }
+      users {
+        id
+      }
+    }
+  }
+`;

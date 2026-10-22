@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.perforce/p4plan-mcp",
   "description": "MCP server for P4 Plan — tasks, sprints, bugs, comments, custom fields via GraphQL API.",
-  "version": "2026.3.1",
+  "version": "2026.3.2",
   "repository": {
     "url": "https://github.com/perforce/p4plan-mcp.git",
     "source": "github"
@@ -12,7 +12,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@perforce/p4plan-mcp",
-      "version": "2026.3.1",
+      "version": "2026.3.2",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
@@ -29,13 +29,23 @@
         {
           "name": "P4PLAN_ALLOW_SELF_SIGNED_CERTS",
           "description": "Set to 'true' to accept self-signed TLS certificates from the GraphQL API. Default: false.",
+          "isRequired": false
+        },
+        {
+          "name": "P4PLAN_READONLY",
+          "description": "Set to 'true' to expose only the tools that read (same as the --readonly argument). Default: false.",
+          "isRequired": false
+        },
+        {
+          "name": "P4PLAN_UPLOAD_DIRS",
+          "description": "Folders upload_attachment may read files from, besides the workspace folders the MCP client shares. Separate several with ':' (';' on Windows).",
           "isRequired": false
         }
       ]
     },
     {
       "registryType": "oci",
-      "identifier": "docker.io/perforce/p4plan-mcp:2026.3.1",
+      "identifier": "docker.io/perforce/p4plan-mcp:2026.3.2",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
@@ -52,6 +62,16 @@
         {
           "name": "P4PLAN_ALLOW_SELF_SIGNED_CERTS",
           "description": "Set to 'true' to accept self-signed TLS certificates from the GraphQL API. Default: false.",
+          "isRequired": false
+        },
+        {
+          "name": "P4PLAN_READONLY",
+          "description": "Set to 'true' to expose only the tools that read (same as the --readonly argument). Default: false.",
+          "isRequired": false
+        },
+        {
+          "name": "P4PLAN_UPLOAD_DIRS",
+          "description": "Folders upload_attachment may read files from, besides the workspace folders the MCP client shares. Separate several with ':' (';' on Windows).",
           "isRequired": false
         }
       ]

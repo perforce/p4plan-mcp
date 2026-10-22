@@ -5,6 +5,8 @@ import { Injectable, Inject, type OnModuleInit } from '@nestjs/common';
 import type { LoggerService } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'node:crypto';
+import { Readable } from 'node:stream';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import { LOGIN_MUTATION, VALIDATE_TOKEN_QUERY } from '../graphql';
@@ -27,6 +29,119 @@ export interface LoginResult {
   };
 }
 
+/**
+ * True only when every top-level definition of a GraphQL document is a
+ * `query`, a `fragment` or a shorthand `{ ... }` query. This is an allowlist,
+ * so it fails closed: mutations, subscriptions and anything it cannot
+ * classify (malformed or unbalanced documents) are not read-only. String
+ * literals and comments are skipped, so their content cannot hide a keyword.
+ */
+export function isReadOnlyDocument(document: string): boolean {
+  const code = document.replace(
+    /"""(?:\\"""|[\s\S])*?"""|"(?:\\.|[^"\\\n])*"|#[^\n\r]*/g,
+    ' ',
+  );
+  let i = 0;
+  let definitions = 0;
+
+  const skipIgnored = () => {
+    while (i < code.length && /[\s,]/.test(code[i])) i++;
+  };
+  // Skip the { ... } block that starts at code[i]; false if it never closes.
+  const skipBlock = (): boolean => {
+    for (let depth = 0; i < code.length; i++) {
+      if (code[i] === '{') depth++;
+      else if (code[i] === '}' && --depth === 0) {
+        i++;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (skipIgnored(); i < code.length; skipIgnored()) {
+    if (code[i] !== '{') {
+      const keyword = /^[_A-Za-z]\w*/.exec(code.slice(i))?.[0];
+      if (keyword !== 'query' && keyword !== 'fragment') return false;
+      i += keyword.length;
+
+      // Name, variables, directives and type condition up to the selection
+      // set. Default values in (...) may contain braces of their own.
+      let parens = 0;
+      while (i < code.length && !(code[i] === '{' && parens === 0)) {
+        if (code[i] === '(') parens++;
+        else if (code[i] === ')' && --parens < 0) return false;
+        else if (code[i] === '}' && parens === 0) return false;
+        i++;
+      }
+    }
+    if (!skipBlock()) return false;
+    definitions++;
+  }
+  return definitions > 0;
+}
+
+/** A file to upload: either in memory or a stream of exactly `size` bytes. */
+export interface UploadSource {
+  fileName: string;
+  mimeType: string;
+  size: number;
+  data: Buffer | Readable;
+}
+
+/**
+ * filename parameters for a multipart part. The API reads a plain filename
+ * as latin1, so non-ASCII names also go in filename* (RFC 5987).
+ */
+export function contentDispositionFileName(fileName: string): string {
+  const ascii = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  if (ascii === fileName) return `filename="${fileName}"`;
+  const encoded = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+function restErrorText(data: unknown): string | undefined {
+  if (data && typeof data === 'object' && 'message' in data) {
+    const message = (data as { message: unknown }).message;
+    if (Array.isArray(message)) return message.join(', ');
+    if (typeof message === 'string') return message;
+  }
+  return undefined;
+}
+
+function uploadErrorMessage(error: AxiosError, id: string): string {
+  const status = error.response?.status;
+  const serverText = restErrorText(error.response?.data);
+  switch (status) {
+    case 413:
+      return `Upload rejected: the file is larger than the attachment size limit of this P4 Plan server (set by its administrator).`;
+    case 400:
+      if (/size/i.test(serverText ?? '')) {
+        return `Upload rejected: the file is larger than the attachment size limit of this P4 Plan server (set by its administrator). Server said: ${serverText}.`;
+      }
+      if (/type/i.test(serverText ?? '')) {
+        return `Upload rejected: this file type is blocked by the P4 Plan server (its administrator controls the blocked extensions). Server said: ${serverText}. Try another format the user agrees to (e.g. .jpg instead of .png), or tell the user to ask a P4 Plan administrator.`;
+      }
+      return `Upload rejected by the P4 Plan server: ${serverText ?? error.message}.`;
+    case 401:
+      return 'Authentication failed - invalid or expired token';
+    case 403:
+      return `Not allowed to add attachments to item ${id}: the user needs Document management access and the right to edit this item's attachments.`;
+    case 404:
+      return `Item ${id} not found: use the ID of a task, bug, sprint or release (the id returned by get_tasks or search_tasks).`;
+    case 408:
+      return `The upload to item ${id} timed out on the P4 Plan server, but it may still have completed. Call get_attachments for item ${id} before retrying; a retry adds a second copy named "name (1)".`;
+    default:
+      if (status && status >= 500) {
+        return `The P4 Plan server could not store the attachment on item ${id} (HTTP ${status}${serverText ? `: ${serverText}` : ''}). This can mean the user has no Create right on the item's attachments folder.`;
+      }
+      return `Attachment upload failed: ${serverText ?? error.message}`;
+  }
+}
+
 interface JwtPayload {
   sub: string | number;
   username: string;
@@ -37,6 +152,7 @@ interface JwtPayload {
 @Injectable()
 export class GraphQLClientService implements OnModuleInit {
   private readonly graphqlUrl: string;
+  private readonly readOnly: boolean;
 
   constructor(
     private readonly httpService: HttpService,
@@ -44,6 +160,7 @@ export class GraphQLClientService implements OnModuleInit {
     @Inject('LOGGER') private readonly logger: LoggerService,
   ) {
     this.graphqlUrl = this.configService.get<string>('graphqlUrl') as string;
+    this.readOnly = this.configService.get<boolean>('readOnly') === true;
   }
 
   async onModuleInit(): Promise<void> {
@@ -158,6 +275,14 @@ export class GraphQLClientService implements OnModuleInit {
     variables: Record<string, unknown>,
     authToken: string,
   ): Promise<T> {
+    // Second layer under the tool filter: in read-only mode only plain
+    // queries leave the server, even from a write tool wrongly marked as read.
+    if (this.readOnly && !isReadOnlyDocument(query)) {
+      throw new Error(
+        'Blocked a GraphQL request that is not a plain query: this P4 Plan MCP server is running in read-only mode (--readonly / P4PLAN_READONLY), so nothing can be created, updated or deleted.',
+      );
+    }
+
     try {
       this.debugOperation(query, variables);
 
@@ -270,15 +395,24 @@ export class GraphQLClientService implements OnModuleInit {
     path: string,
     authToken: string,
   ): Promise<Buffer> {
+    // itemId is part of the URL path: anything but a numeric ID could steer
+    // this authenticated POST to another endpoint (e.g. "../graphql?query=...").
+    const id = String(itemId).trim();
+    if (!/^\d+$/.test(id)) {
+      throw new Error(
+        `Invalid task ID "${itemId}": expected a numeric task ID such as "1900555" (use the id returned by get_tasks or search_tasks).`,
+      );
+    }
+
     try {
       this.logger.debug?.(
-        `Downloading attachment: itemId=${itemId}, path=${path}`,
+        `Downloading attachment: itemId=${id}, path=${path}`,
         GraphQLClientService.name,
       );
 
       const response = await firstValueFrom(
         this.httpService.post<ArrayBuffer>(
-          `${this.graphqlUrl}/attachment/${itemId}`,
+          `${this.graphqlUrl}/attachment/${id}`,
           { path },
           {
             headers: {
@@ -305,14 +439,98 @@ export class GraphQLClientService implements OnModuleInit {
           });
         }
         if (error.response?.status === 404) {
-          throw new Error(
-            `Attachment not found: item ${itemId}, path "${path}"`,
-            { cause: error },
-          );
+          throw new Error(`Attachment not found: item ${id}, path "${path}"`, {
+            cause: error,
+          });
         }
         throw new Error(`Attachment download failed: ${error.message}`, {
           cause: error,
         });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Upload a file as an attachment (POST /attachment/:itemID/upload, a
+   * multipart body with one part named "file"). The body is streamed.
+   */
+  async uploadAttachment(
+    itemId: string,
+    file: UploadSource,
+    authToken: string,
+  ): Promise<{ p4PlanPath?: string }> {
+    if (this.readOnly) {
+      throw new Error(
+        'Blocked an attachment upload: this P4 Plan MCP server is running in read-only mode (--readonly / P4PLAN_READONLY), so nothing can be created, updated or deleted.',
+      );
+    }
+    const id = String(itemId).trim();
+    if (!/^\d+$/.test(id)) {
+      throw new Error(
+        `Invalid task ID "${itemId}": expected a numeric task ID such as "1900555" (use the id returned by get_tasks or search_tasks).`,
+      );
+    }
+
+    const boundary = `----p4planmcp${randomBytes(16).toString('hex')}`;
+    const head = Buffer.from(
+      `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="file"; ${contentDispositionFileName(file.fileName)}\r\n` +
+        `Content-Type: ${file.mimeType}\r\n\r\n`,
+      'utf-8',
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8');
+    const body = Readable.from(
+      (async function* () {
+        yield head;
+        let sent = 0;
+        for await (const chunk of Buffer.isBuffer(file.data)
+          ? [file.data]
+          : file.data) {
+          sent += (chunk as Buffer).length;
+          yield chunk as Buffer;
+        }
+        // A shorter body than Content-Length would leave the request hanging.
+        if (sent !== file.size) {
+          throw new Error(
+            `upload_attachment: "${file.fileName}" shrank from ${file.size} to ${sent} bytes while it was being uploaded (was it truncated or rotated?). Try again once the file has stopped changing.`,
+          );
+        }
+        yield tail;
+      })(),
+    );
+
+    this.logger.debug?.(
+      `Uploading attachment: itemId=${id}, fileName=${file.fileName}, size=${file.size}`,
+      GraphQLClientService.name,
+    );
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post<{ success?: boolean; p4PlanPath?: string }>(
+          `${this.graphqlUrl}/attachment/${id}/upload`,
+          body,
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              'Content-Type': `multipart/form-data; boundary=${boundary}`,
+              'Content-Length': String(head.length + file.size + tail.length),
+            },
+            // With redirects on, axios buffers the whole body (max 10 MB).
+            maxRedirects: 0,
+            maxBodyLength: Infinity,
+          },
+        ),
+      );
+      return { p4PlanPath: response.data?.p4PlanPath };
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        this.logger.error(
+          `Attachment upload failed: ${error.message}`,
+          error.stack,
+          GraphQLClientService.name,
+        );
+        throw new Error(uploadErrorMessage(error, id), { cause: error });
       }
       throw error;
     }

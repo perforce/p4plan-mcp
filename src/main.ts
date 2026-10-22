@@ -7,10 +7,20 @@ import { AppModule } from './app.module';
 import { ToolsService } from './tools/tools.service';
 import { GraphQLClientService } from './graphql-client/graphql-client.service';
 import { SkillsTools } from './tools/skills.tools';
-import { SERVER_INSTRUCTIONS } from './config/server-instructions';
+import { ConfigService } from '@nestjs/config';
+import {
+  READ_ONLY_SERVER_INSTRUCTIONS,
+  SERVER_INSTRUCTIONS,
+} from './config/server-instructions';
+import {
+  UPLOAD_DIRS_ENV,
+  envFlag,
+  parseReadOnlyEnv,
+} from './config/configuration';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { loggerFactory } from './factories/logger.factory';
 import { createMcpServer } from './factories/mcp-server.factory';
+import { unusableUploadDirs } from './tools/upload-file';
 
 async function bootstrap() {
   const logger = loggerFactory;
@@ -18,10 +28,7 @@ async function bootstrap() {
   logger.log(`Using Node.js version: ${process.version}`, 'P4PlanMCP');
   logger.log('Starting in stdio transport mode', 'P4PlanMCP');
 
-  if (
-    process.env.P4PLAN_ALLOW_SELF_SIGNED_CERTS === 'true' ||
-    process.env.P4PLAN_ALLOW_SELF_SIGNED_CERTS === '1'
-  ) {
+  if (envFlag(process.env.P4PLAN_ALLOW_SELF_SIGNED_CERTS)) {
     logger.warn?.(
       'TLS certificate validation is disabled (P4PLAN_ALLOW_SELF_SIGNED_CERTS is set)',
       'P4PlanMCP',
@@ -61,13 +68,31 @@ async function bootstrap() {
   }
 
   const skillsTools = app.get(SkillsTools);
+  const readOnly = app.get(ConfigService).get<boolean>('readOnly') === true;
+  if (!parseReadOnlyEnv(process.env.P4PLAN_READONLY).recognised) {
+    logger.warn?.(
+      `P4PLAN_READONLY="${process.env.P4PLAN_READONLY}" is not recognised, so read-only mode is ON to be safe. Use true or false.`,
+      'P4PlanMCP',
+    );
+  }
+
+  const uploadDirs = app.get(ConfigService).get<string[]>('uploadDirs') ?? [];
+  for (const dir of await unusableUploadDirs(uploadDirs)) {
+    logger.warn?.(
+      `${UPLOAD_DIRS_ENV} entry "${dir}" is not an absolute path to an existing folder, so upload_attachment cannot read files from it.`,
+      'P4PlanMCP',
+    );
+  }
 
   const mcpServer = createMcpServer({
     toolsService,
     skillsTools,
     authToken,
-    instructions: SERVER_INSTRUCTIONS,
+    instructions: readOnly
+      ? READ_ONLY_SERVER_INSTRUCTIONS
+      : SERVER_INSTRUCTIONS,
     logger,
+    readOnly,
   });
 
   const transport = new StdioServerTransport();

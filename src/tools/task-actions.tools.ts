@@ -8,6 +8,7 @@ import {
   TaskToolsBase,
   ToolRegistration,
   validateRequired,
+  writeAnnotations,
 } from './task-helpers';
 import {
   COMMIT_TO_SPRINT_MUTATION,
@@ -49,6 +50,10 @@ export class TaskActionsTools extends TaskToolsBase {
           },
           required: ['taskId', 'sprintId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.commitToSprint(args, authToken),
     });
@@ -69,6 +74,10 @@ export class TaskActionsTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.uncommitFromSprint(args, authToken),
     });

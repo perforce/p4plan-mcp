@@ -3,6 +3,7 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import type { LoggerService } from '@nestjs/common';
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { ProjectsTools } from './projects.tools';
 import { TasksTools } from './tasks.tools';
 import { UsersTools } from './users.tools';
@@ -19,6 +20,7 @@ export interface McpTool {
     properties: Record<string, unknown>;
     required?: string[];
   };
+  annotations: Readonly<ToolAnnotations>;
 }
 
 /**
@@ -34,12 +36,19 @@ export interface McpToolResult {
   isError?: boolean;
 }
 
+/** Per-call context from the MCP session. */
+export interface ToolCallContext {
+  /** The client's roots (file:// URIs); [] when the client shares none. */
+  listRoots?: () => Promise<string[]>;
+}
+
 /**
  * Tool handler function signature
  */
 export type ToolHandler = (
   args: Record<string, unknown>,
   authToken: string,
+  context?: ToolCallContext,
 ) => Promise<McpToolResult> | McpToolResult;
 
 /**
@@ -97,10 +106,13 @@ export class ToolsService {
   }
 
   /**
-   * List all available tools
+   * List all available tools (only the read-only ones in read-only mode)
    */
-  listTools(): McpTool[] {
-    return Array.from(this.tools.values());
+  listTools(options: { readOnly?: boolean } = {}): McpTool[] {
+    const tools = Array.from(this.tools.values());
+    return options.readOnly
+      ? tools.filter((tool) => tool.annotations.readOnlyHint === true)
+      : tools;
   }
 
   /**
@@ -110,6 +122,7 @@ export class ToolsService {
     name: string,
     args: Record<string, unknown>,
     authToken: string,
+    context?: ToolCallContext,
   ): Promise<McpToolResult> {
     const handler = this.handlers.get(name);
 
@@ -121,7 +134,7 @@ export class ToolsService {
     }
 
     try {
-      return await handler(args, authToken);
+      return await handler(args, authToken, context);
     } catch (error) {
       this.logger.error(
         `Tool ${name} failed: ${error instanceof Error ? error.message : 'Unknown error'}`,

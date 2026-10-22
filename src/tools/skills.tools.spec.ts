@@ -1,7 +1,9 @@
 // Copyright (c) 2026, Perforce Software, Inc. All rights reserved.
 // Licensed under the MIT License. See LICENSE.txt in the project root.
 
+import { ConfigService } from '@nestjs/config';
 import { SkillsTools } from './skills.tools';
+import { WRITE_ONLY_SKILLS } from '../config/server-instructions';
 
 describe('SkillsTools', () => {
   let tools: SkillsTools;
@@ -15,6 +17,34 @@ describe('SkillsTools', () => {
     };
 
     tools = new SkillsTools(mockLogger);
+  });
+
+  describe('read-only mode', () => {
+    const readOnlyConfig = {
+      get: jest.fn((key: string) => key === 'readOnly'),
+    } as unknown as ConfigService;
+
+    it('leaves out the skills that are only about writing', () => {
+      const readOnlyTools = new SkillsTools(mockLogger, readOnlyConfig);
+      const names = readOnlyTools.getAvailableSkillNames();
+
+      expect(names).toContain('search-queries');
+      for (const skill of WRITE_ONLY_SKILLS) {
+        expect(names).not.toContain(skill);
+        expect(readOnlyTools.getSkillContents().has(skill)).toBe(false);
+      }
+      expect(
+        readOnlyTools.getTools().get('read_skill')!.definition.description,
+      ).not.toContain('comment-html-format');
+    });
+
+    it('keeps every skill when read-only mode is off', () => {
+      const names = tools.getAvailableSkillNames();
+
+      for (const skill of WRITE_ONLY_SKILLS) {
+        expect(names).toContain(skill);
+      }
+    });
   });
 
   describe('tool registration', () => {

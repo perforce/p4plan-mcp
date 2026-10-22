@@ -4,7 +4,11 @@
 import { Injectable } from '@nestjs/common';
 import { GraphQLClientService } from '../graphql-client/graphql-client.service';
 import { McpToolResult } from './tools.service';
-import { ToolRegistration, validateRequired } from './task-helpers';
+import {
+  ToolRegistration,
+  validateRequired,
+  READ_ONLY_ANNOTATIONS,
+} from './task-helpers';
 import { GET_CURRENT_USER_QUERY, GET_PROJECT_USERS_QUERY } from '../graphql';
 
 @Injectable()
@@ -24,6 +28,7 @@ export class UsersTools {
           type: 'object',
           properties: {},
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getCurrentUser(args, authToken),
     });
@@ -44,6 +49,7 @@ export class UsersTools {
           },
           required: ['projectId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.listProjectUsers(args, authToken),
     });

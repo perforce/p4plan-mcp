@@ -16,7 +16,7 @@ skills/
 ├── custom-fields/SKILL.md        # Custom columns, project-specific metadata
 ├── gantt-scheduling/SKILL.md     # Scheduled tasks, timeline, dependencies
 ├── workflows/SKILL.md            # Status workflows, status state machines
-├── pipeline/SKILL.md             # Pipeline stages, breakdown, defects in a pipeline stage
+├── pipeline/SKILL.md             # Pipeline steps, breakdown, defects in a pipeline step
 ├── comment-html-format/SKILL.md  # HTML formatting for comments and multiline fields
 └── mentions/SKILL.md             # @user mentions in comments and multiline fields
 ```
@@ -25,16 +25,16 @@ skills/
 
 | Skill                  | Trigger Phrases                                                                |
 |------------------------|--------------------------------------------------------------------------------|
-| **project-navigation** | projects, navigation, structure, getting started, search, find, filter, report |
+| **project-navigation** | projects, create project, navigation, structure, search, find, filter, report  |
 | **search-queries**     | advanced search, find query, filter by status/assignee/severity/dates/type     |
 | **task-management**    | tasks, status, my work, To Do List, assign, comments, attachments, download    |
 | **planning**           | sprint, planning, capacity, velocity, burndown, release, milestone, version    |
 | **backlog-refinement** | backlog, refinement, estimation, story points, prioritization                  |
 | **bug-tracking**       | bugs, triage, severity, QA, defects, create bug, screenshots                   |
-| **custom-fields**      | custom fields, columns, metadata                                               |
+| **custom-fields**      | custom fields, columns, create column, time spent column, metadata             |
 | **gantt-scheduling**   | Gantt, schedule, timeline, dependencies                                        |
 | **workflows**          | workflow, sign-off, approval, status transitions                               |
-| **pipeline**            | pipeline, pipeline task, stage, breakdown, bug in a pipeline stage             |
+| **pipeline**           | pipeline, pipeline task, step, breakdown, bug in a pipeline step               |
 | **comment-html-format** | comments, multiline fields, HTML formatting, allowed tags                      |
 | **mentions**            | @mentions, user references, notifications in comments                          |
 

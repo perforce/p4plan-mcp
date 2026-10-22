@@ -31,6 +31,7 @@ export interface MockGraphQLClient {
   login: jest.Mock;
   getCurrentUser: jest.Mock;
   downloadAttachment: jest.Mock;
+  uploadAttachment?: jest.Mock;
 }
 
 /**

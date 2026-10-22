@@ -1,7 +1,7 @@
 {
   "name": "@perforce/p4plan-mcp",
   "mcpName": "io.github.perforce/p4plan-mcp",
-  "version": "2026.3.1",
+  "version": "2026.3.2",
   "description": "P4 Plan MCP (Model Context Protocol) Server",
   "author": "Perforce Software, Inc.",
   "license": "MIT",
@@ -42,7 +42,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@nestjs/axios": "4.0.1",
     "@nestjs/common": "11.1.17",
     "@nestjs/config": "4.0.4",
@@ -74,7 +74,7 @@
     "rimraf": "6.1.3",
     "source-map-support": "0.5.21",
     "ts-jest": "29.4.9",
-    "ts-loader": "9.5.4",
+    "ts-loader": "9.6.2",
     "ts-node": "10.9.2",
     "tsconfig-paths": "4.2.0",
     "typescript": "5.9.3",
@@ -96,5 +96,10 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "overrides": {
+    "@istanbuljs/load-nyc-config": {
+      "js-yaml": "4.3.2"
+    }
   }
 }

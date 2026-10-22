@@ -6,4 +6,9 @@ services:
       - P4PLAN_API_URL=http://host.docker.internal:4000
       - LOG_LEVEL=debug
       - SEARCH_LIMIT=400
+      - P4PLAN_READONLY=${P4PLAN_READONLY:-false}
+      # To let upload_attachment read files, mount a folder and uncomment both:
+      # - P4PLAN_UPLOAD_DIRS=/uploads
+    # volumes:
+    #   - ~/Screenshots:/uploads:ro
     restart: unless-stopped

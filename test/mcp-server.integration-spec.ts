@@ -18,18 +18,25 @@
  * with no live P4 Plan server and no AI model.
  */
 
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 import { AppModule } from '../src/app.module';
 import { ToolsService } from '../src/tools/tools.service';
 import { SkillsTools } from '../src/tools/skills.tools';
 import { GraphQLClientService } from '../src/graphql-client/graphql-client.service';
 import { createMcpServer } from '../src/factories/mcp-server.factory';
+import {
+  READ_ONLY_SERVER_INSTRUCTIONS,
+  SERVER_INSTRUCTIONS,
+} from '../src/config/server-instructions';
 
 // Read independently of the factory so the assertion below proves the
 // handshake reports the real package version, not a literal copied twice.
@@ -75,6 +82,7 @@ describe('MCP Server integration (real tools, mocked network)', () => {
     login: jest.fn(),
     getCurrentUser: jest.fn(),
     downloadAttachment: jest.fn(),
+    uploadAttachment: jest.fn(),
     healthcheck: jest.fn().mockResolvedValue({ ok: true, status: 200 }),
   };
 
@@ -167,6 +175,8 @@ describe('MCP Server integration (real tools, mocked network)', () => {
           'get_my_tasks', // task items
           'create_item', // task crud
           'search_tasks',
+          'create_custom_column', // task custom fields
+          'create_project',
         ]),
       );
     });
@@ -176,6 +186,46 @@ describe('MCP Server integration (real tools, mocked network)', () => {
       for (const tool of tools) {
         expect(tool.inputSchema.type).toBe('object');
       }
+    });
+
+    it('publishes every parameter description defined on the tools', async () => {
+      const { tools } = await client.listTools();
+      const definitions = new Map(
+        toolsService.listTools().map((tool) => [tool.name, tool]),
+      );
+
+      for (const tool of tools) {
+        const definition = definitions.get(tool.name);
+        const published = (tool.inputSchema.properties ?? {}) as Record<
+          string,
+          { description?: string }
+        >;
+        for (const [key, property] of Object.entries(
+          definition?.inputSchema.properties ?? {},
+        )) {
+          const { description } = property as { description?: string };
+          if (description) {
+            expect({
+              tool: tool.name,
+              key,
+              description: published[key]?.description,
+            }).toEqual({ tool: tool.name, key, description });
+          }
+        }
+      }
+    });
+
+    it('keeps enum values in the published schema', async () => {
+      const { tools } = await client.listTools();
+      const createColumn = tools.find((t) => t.name === 'create_custom_column');
+      const columnType = (
+        createColumn?.inputSchema.properties as Record<
+          string,
+          { enum?: string[] }
+        >
+      ).columnType;
+
+      expect(columnType.enum).toContain('timeSpent');
     });
 
     it('marks required arguments as required in the published schema', async () => {
@@ -270,6 +320,237 @@ describe('MCP Server integration (real tools, mocked network)', () => {
       expect(result.content[0].text).toContain('something broke');
     });
 
+    it('coerces loosely typed arguments the way smaller models send them', async () => {
+      mockQuery.mockResolvedValueOnce({ columns: [] }).mockResolvedValueOnce({
+        createTimeSpentCustomColumn: { id: 'col-1', name: 'Time Spent' },
+      });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: 100,
+            name: 'Time Spent',
+            columnType: 'Time Spent',
+            useForTimeReporting: 'true',
+            updateWorkRemaining: 'no',
+          },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      const [query, variables] = mockQuery.mock.calls[1] as [
+        string,
+        Record<string, unknown>,
+      ];
+      expect(query).toContain('createTimeSpentCustomColumn(');
+      expect(variables).toEqual({
+        projectID: '100',
+        input: {
+          name: 'Time Spent',
+          readOnly: false,
+          activated: true,
+          useForTimeReporting: true,
+          updateWorkRemaining: false,
+        },
+      });
+    });
+
+    it('accepts a type alias and keeps commas inside drop-list labels', async () => {
+      mockQuery.mockResolvedValueOnce({ columns: [] }).mockResolvedValueOnce({
+        createSingleSelectionDropListCustomColumn: { id: 'col-1' },
+      });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: ['Q1, 2026', 'Backend'],
+          },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      const [, variables] = mockQuery.mock.calls[1] as [
+        string,
+        { input: Record<string, unknown> },
+      ];
+      expect(variables.input.dropListItems).toEqual([
+        { name: 'Q1, 2026', icon: 'default' },
+        { name: 'Backend', icon: 'default' },
+      ]);
+    });
+
+    it.each([
+      ['Time Spent', 'createTimeSpentCustomColumn('],
+      ['TimeSpentCustomColumn', 'createTimeSpentCustomColumn('],
+      ['integer', 'createNumberCustomColumn('],
+      ['url', 'createHyperlinkCustomColumn('],
+      ['date and time', 'createDateTimeCustomColumn('],
+    ])('maps the column type %p', async (columnType, expectedMutation) => {
+      mockQuery
+        .mockResolvedValueOnce({ columns: [] })
+        .mockResolvedValueOnce({ created: { id: 'col-1' } });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: { projectId: '100', name: 'New column', columnType },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      const [query] = mockQuery.mock.calls[1] as [string];
+      expect(query).toContain(expectedMutation);
+    });
+
+    it('rejects drop-list options sent as one comma-separated string', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: 'Bug, regression',
+          },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it.each(['time', 'list'])(
+      'does not guess a column type for %p',
+      async (columnType) => {
+        const result = asResult(
+          await client.callTool({
+            name: 'create_custom_column',
+            arguments: { projectId: '100', name: 'Vague', columnType },
+          }),
+        );
+
+        expect(result.isError).toBe(true);
+        expect(mockQuery).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a JSON-string option with unknown keys instead of using it as a label', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: ['{"label":"Low","color":"red"}'],
+          },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('not a valid option');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('rejects malformed JSON lists instead of splitting them', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: {
+            projectId: '100',
+            name: 'Area',
+            columnType: 'dropdown',
+            dropListItems: "['Low','High']",
+          },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('creates a project from loosely typed arguments', async () => {
+      mockGraphqlClient.getCurrentUser.mockResolvedValueOnce({
+        id: '1',
+        name: 'Admin',
+      });
+      mockQuery.mockImplementation((query: string) => {
+        if (query.includes('GetUsersAndGroups')) {
+          return Promise.resolve({
+            users: [
+              {
+                __typename: 'NormalUser',
+                id: '13',
+                name: 'UserA',
+                isDeleted: false,
+                isLocked: false,
+              },
+              {
+                __typename: 'NormalUser',
+                id: '14',
+                name: 'UserB',
+                isDeleted: false,
+                isLocked: false,
+              },
+            ],
+            userGroups: [],
+          });
+        }
+        if (query.includes('CreateProject')) {
+          return Promise.resolve({
+            createProject: { id: '500', name: 'Apollo' },
+          });
+        }
+        return Promise.resolve({});
+      });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'create_project',
+          arguments: {
+            name: 'Apollo',
+            defaultMode: 'Gantt',
+            methodTemplate: 'LEAN',
+            members: '13, 14',
+            addMeAsManager: 'no',
+          },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      const createCall = (
+        mockQuery.mock.calls as Array<[string, Record<string, unknown>]>
+      ).find(([query]) => query.includes('CreateProject'));
+      expect(createCall?.[1]).toEqual({
+        input: {
+          name: 'Apollo',
+          defaultMode: 'taskScheduling',
+          methodTemplate: 'lean',
+        },
+      });
+      expect(
+        parseText<{ members: string[]; managers: string[] }>(result),
+      ).toMatchObject({ members: ['UserA', 'UserB'], managers: [] });
+    });
+
+    it('still rejects values that cannot be mapped unambiguously', async () => {
+      const result = asResult(
+        await client.callTool({
+          name: 'create_custom_column',
+          arguments: { projectId: '100', name: 'Calc', columnType: 'formula' },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('timeSpent');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
     it('supports interleaved list and call operations over one session', async () => {
       mockQuery.mockResolvedValue({ userProjects: [] });
 
@@ -288,6 +569,216 @@ describe('MCP Server integration (real tools, mocked network)', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Tool annotations & read-only mode
+  // ---------------------------------------------------------------------------
+
+  describe('tool annotations', () => {
+    it('publishes annotations for every tool', async () => {
+      const { tools } = await client.listTools();
+
+      tools.forEach((tool) => {
+        expect(typeof tool.annotations?.readOnlyHint).toBe('boolean');
+      });
+      const createItem = tools.find((t) => t.name === 'create_item');
+      expect(createItem?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+      });
+    });
+  });
+
+  describe('upload_attachment and client roots', () => {
+    let rootsServer: McpServer;
+    let rootsClient: Client;
+    let workspace: string;
+    let elsewhere: string;
+
+    beforeAll(async () => {
+      workspace = mkdtempSync(join(tmpdir(), 'p4plan-it-root-'));
+      elsewhere = mkdtempSync(join(tmpdir(), 'p4plan-it-other-'));
+      writeFileSync(join(workspace, 'shot.png'), 'PNG');
+      writeFileSync(join(elsewhere, 'secret.txt'), 'nope');
+
+      rootsServer = createMcpServer({
+        toolsService,
+        skillsTools: moduleRef.get(SkillsTools),
+        authToken: AUTH_TOKEN,
+      });
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      rootsClient = new Client(
+        { name: 'integration-test-roots-client', version: '1.0.0' },
+        { capabilities: { roots: {} } },
+      );
+      rootsClient.setRequestHandler(ListRootsRequestSchema, () => ({
+        roots: [{ uri: pathToFileURL(workspace).href, name: 'workspace' }],
+      }));
+      await rootsServer.connect(serverTransport);
+      await rootsClient.connect(clientTransport);
+    });
+
+    afterAll(async () => {
+      await rootsClient?.close().catch(() => {});
+      await rootsServer?.close().catch(() => {});
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(elsewhere, { recursive: true, force: true });
+    });
+
+    beforeEach(() => {
+      mockGraphqlClient.uploadAttachment.mockReset();
+      mockGraphqlClient.uploadAttachment.mockResolvedValue({
+        p4PlanPath: 'hansoft://server/DocumentID/1',
+      });
+    });
+
+    it('is a write tool that only adds data', async () => {
+      const { tools } = await client.listTools();
+      const upload = tools.find((t) => t.name === 'upload_attachment');
+
+      expect(upload?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+      });
+    });
+
+    it('uploads a file inside a root the client shares', async () => {
+      mockQuery
+        .mockResolvedValueOnce({ item: { attachments: [] } })
+        .mockResolvedValueOnce({
+          item: {
+            attachments: [{ path: 'Att/shot.png', size: 3, coverImage: true }],
+          },
+        });
+
+      const result = asResult(
+        await rootsClient.callTool({
+          name: 'upload_attachment',
+          arguments: { taskId: '42', filePath: join(workspace, 'shot.png') },
+        }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      expect(parseText<{ path: string }>(result).path).toBe('Att/shot.png');
+      expect(mockGraphqlClient.uploadAttachment).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a file outside the roots without uploading', async () => {
+      mockQuery.mockResolvedValue({ item: { attachments: [] } });
+
+      const result = asResult(
+        await rootsClient.callTool({
+          name: 'upload_attachment',
+          arguments: { taskId: '42', filePath: join(elsewhere, 'secret.txt') },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('outside the folders');
+      expect(mockGraphqlClient.uploadAttachment).not.toHaveBeenCalled();
+    });
+
+    it('refuses local files when the client shares no roots', async () => {
+      mockQuery.mockResolvedValue({ item: { attachments: [] } });
+
+      const result = asResult(
+        await client.callTool({
+          name: 'upload_attachment',
+          arguments: { taskId: '42', filePath: join(workspace, 'shot.png') },
+        }),
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('P4PLAN_UPLOAD_DIRS');
+      expect(mockGraphqlClient.uploadAttachment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('read-only mode', () => {
+    let readOnlyServer: McpServer;
+    let readOnlyClient: Client;
+
+    beforeAll(async () => {
+      readOnlyServer = createMcpServer({
+        toolsService,
+        skillsTools: moduleRef.get(SkillsTools),
+        authToken: AUTH_TOKEN,
+        instructions: READ_ONLY_SERVER_INSTRUCTIONS,
+        readOnly: true,
+      });
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      readOnlyClient = new Client({
+        name: 'integration-test-readonly-client',
+        version: '1.0.0',
+      });
+      await readOnlyServer.connect(serverTransport);
+      await readOnlyClient.connect(clientTransport);
+    });
+
+    afterAll(async () => {
+      await readOnlyClient?.close().catch(() => {});
+      await readOnlyServer?.close().catch(() => {});
+    });
+
+    it('publishes only read tools', async () => {
+      const { tools } = await readOnlyClient.listTools();
+      const names = tools.map((t) => t.name).sort();
+
+      expect(names).toEqual(
+        toolsService
+          .listTools({ readOnly: true })
+          .map((t) => t.name)
+          .sort(),
+      );
+      expect(names).toContain('get_tasks');
+      expect(names).not.toContain('post_comment');
+      expect(names).not.toContain('delete_comment');
+      expect(names).not.toContain('upload_attachment');
+      tools.forEach((tool) => {
+        expect(tool.annotations?.readOnlyHint).toBe(true);
+      });
+    });
+
+    it('rejects a call to a write tool without reaching the API', async () => {
+      const result = asResult(
+        await readOnlyClient.callTool({
+          name: 'post_comment',
+          arguments: { taskId: '1', text: 'hello' },
+        }),
+      );
+
+      // Write tools are not registered, so the SDK answers before any handler.
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Tool post_comment not found');
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it('still serves read tools', async () => {
+      mockQuery.mockResolvedValue({
+        userProjects: [{ id: '1', name: 'Alpha' }],
+      });
+
+      const result = asResult(
+        await readOnlyClient.callTool({ name: 'list_projects', arguments: {} }),
+      );
+
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toContain('Alpha');
+    });
+
+    it('tells the model that writes are unavailable', () => {
+      const instructions = readOnlyClient.getInstructions() ?? '';
+
+      expect(instructions).toContain('READ-ONLY MODE');
+      // The rules for writing comments and fields only make sense with write tools.
+      expect(instructions).not.toContain('post_comment');
+      expect(instructions).not.toContain('comment-html-format');
+      expect(SERVER_INSTRUCTIONS).toContain('post_comment');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Skill resources
   // ---------------------------------------------------------------------------
 
@@ -301,7 +792,8 @@ describe('MCP Server integration (real tools, mocked network)', () => {
 
       const read = await client.readResource({ uri: first.uri });
       expect(read.contents.length).toBeGreaterThan(0);
-      expect(typeof read.contents[0].text).toBe('string');
+      const [content] = read.contents;
+      expect('text' in content && typeof content.text).toBe('string');
     });
   });
 });

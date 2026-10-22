@@ -9,6 +9,8 @@ import {
   TaskToolsBase,
   ToolRegistration,
   validateRequired,
+  READ_ONLY_ANNOTATIONS,
+  writeAnnotations,
 } from './task-helpers';
 import {
   CREATE_BACKLOG_TASKS_MUTATION,
@@ -70,6 +72,7 @@ export class TaskCrudTools extends TaskToolsBase {
           },
           required: ['taskIds'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.getTasks(args, authToken),
     });
@@ -95,6 +98,7 @@ export class TaskCrudTools extends TaskToolsBase {
           },
           required: ['findQuery', 'projectId'],
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       handler: (args, authToken) => this.searchTasks(args, authToken),
     });
@@ -183,6 +187,10 @@ export class TaskCrudTools extends TaskToolsBase {
           },
           required: ['type', 'name'],
         },
+        annotations: writeAnnotations({
+          destructive: false,
+          idempotent: false,
+        }),
       },
       handler: (args, authToken) => this.createItem(args, authToken),
     });
@@ -203,6 +211,10 @@ export class TaskCrudTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.completeTask(args, authToken),
     });
@@ -223,6 +235,10 @@ export class TaskCrudTools extends TaskToolsBase {
           },
           required: ['taskId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.startTask(args, authToken),
     });
@@ -467,6 +483,10 @@ export class TaskCrudTools extends TaskToolsBase {
           },
           required: ['itemId'],
         },
+        annotations: writeAnnotations({
+          destructive: true,
+          idempotent: true,
+        }),
       },
       handler: (args, authToken) => this.updateItem(args, authToken),
     });
